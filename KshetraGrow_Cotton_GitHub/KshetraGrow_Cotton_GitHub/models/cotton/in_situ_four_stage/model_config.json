@@ -1,0 +1,24 @@
+{
+    "crop": "Cotton",
+    "model_id": "in_situ_four_stage",
+    "architecture": "MobileNetV2",
+    "input_size": [
+        160,
+        160,
+        3
+    ],
+    "classes": {
+        "0": "Boll_Development",
+        "1": "Boll_Opening",
+        "2": "Flowering",
+        "3": "Squaring"
+    },
+    "training_images": 482,
+    "validation_images": 114,
+    "test_images": 119,
+    "test_accuracy": 0.6303,
+    "macro_f1": 0.6579,
+    "input_preprocessing": "RGB, resize to 160x160, scale pixel values to [0,1]. Model applies Rescaling(scale=2, offset=-1) internally.",
+    "dataset": "Zenodo in-situ cotton phenology photographs",
+    "dataset_url": "https://zenodo.org/records/7646864"
+}

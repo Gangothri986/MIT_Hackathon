@@ -1,0 +1,24 @@
+{
+    "crop": "Cotton",
+    "model_id": "original_five_stage",
+    "architecture": "MobileNetV2",
+    "pretrained_weights": "ImageNet",
+    "input_size": [
+        160,
+        160,
+        3
+    ],
+    "classes": {
+        "0": "Stage-1",
+        "1": "Stage-2",
+        "2": "Stage-3",
+        "3": "Stage-4",
+        "4": "Stage-5"
+    },
+    "training_images": 959,
+    "validation_images": 204,
+    "test_images": 205,
+    "test_accuracy": 0.6049,
+    "macro_f1": 0.6328,
+    "input_preprocessing": "RGB, resize to 160x160, scale pixel values to [0,1]. No explicit preprocessing layer is present in the inspected saved model."
+}
