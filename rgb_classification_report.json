@@ -1,0 +1,33 @@
+{
+    "Early Vegetative": {
+        "precision": 0.9840255591054313,
+        "recall": 0.9808917197452229,
+        "f1-score": 0.9824561403508771,
+        "support": 314.0
+    },
+    "Mid Vegetative": {
+        "precision": 0.8731563421828908,
+        "recall": 0.9426751592356688,
+        "f1-score": 0.9065849923430321,
+        "support": 314.0
+    },
+    "Late Vegetative": {
+        "precision": 0.9685430463576159,
+        "recall": 0.9315286624203821,
+        "f1-score": 0.9496753246753247,
+        "support": 628.0
+    },
+    "accuracy": 0.946656050955414,
+    "macro avg": {
+        "precision": 0.9419083158819793,
+        "recall": 0.9516985138004247,
+        "f1-score": 0.946238819123078,
+        "support": 1256.0
+    },
+    "weighted avg": {
+        "precision": 0.9485669985008885,
+        "recall": 0.946656050955414,
+        "f1-score": 0.9470979455111395,
+        "support": 1256.0
+    }
+}
