@@ -1,41 +1,233 @@
+
 import express from 'express';
 
 const router = express.Router();
 
-const CURRENT_WEATHER = {
-  location: 'Local Farm Weather Station',
-  lastUpdated: '10 mins ago',
-  temperature: 29.4,
-  apparentTemp: 31.2,
-  tempMin: 20.8,
-  tempMax: 32.6,
-  humidity: 68,
-  rainfall: 0.0,
-  rainfallProb: 15,
-  solarRadiation: 840,
-  uvIndex: 7.2,
-  windSpeed: 11.4,
-  soilMoisture: 32,
-  soilTemperature: 24.8,
-  evapotranspiration: 4.8,
+// Mysuru coordinates (can be changed using .env)
+const FARM_LATITUDE = process.env.FARM_LATITUDE || 12.2958;
+const FARM_LONGITUDE = process.env.FARM_LONGITUDE || 76.6394;
+
+const OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast';
+
+const weatherDescriptions = {
+  0: 'Clear Sky',
+  1: 'Mainly Clear',
+  2: 'Partly Cloudy',
+  3: 'Overcast',
+  45: 'Fog',
+  48: 'Depositing Rime Fog',
+  51: 'Light Drizzle',
+  53: 'Moderate Drizzle',
+  55: 'Dense Drizzle',
+  61: 'Slight Rain',
+  63: 'Moderate Rain',
+  65: 'Heavy Rain',
+  71: 'Slight Snow',
+  73: 'Moderate Snow',
+  75: 'Heavy Snow',
+  80: 'Rain Showers',
+  81: 'Moderate Rain Showers',
+  82: 'Violent Rain Showers',
+  95: 'Thunderstorm',
+  96: 'Thunderstorm with Hail',
+  99: 'Severe Thunderstorm with Hail',
 };
 
-const FORECAST_7_DAYS = [
-  { day: 'Wed', date: 'Nov 04', tempMax: 32, tempMin: 21, humidity: 68, rainMm: 0, rainChance: 10, gddDaily: 16.5, condition: 'Partly Sunny', solar: 840 },
-  { day: 'Thu', date: 'Nov 05', tempMax: 33, tempMin: 22, humidity: 72, rainMm: 2, rainChance: 30, gddDaily: 17.5, condition: 'Scattered Clouds', solar: 810 },
-  { day: 'Fri', date: 'Nov 06', tempMax: 34, tempMin: 23, humidity: 79, rainMm: 12, rainChance: 65, gddDaily: 18.5, condition: 'Thunder Showers', solar: 680 },
-  { day: 'Sat', date: 'Nov 07', tempMax: 30, tempMin: 21, humidity: 84, rainMm: 28, rainChance: 85, gddDaily: 15.5, condition: 'Heavy Rain', solar: 520 },
-  { day: 'Sun', date: 'Nov 08', tempMax: 29, tempMin: 20, humidity: 82, rainMm: 8, rainChance: 50, gddDaily: 14.5, condition: 'Overcast & Drizzle', solar: 610 },
-  { day: 'Mon', date: 'Nov 09', tempMax: 31, tempMin: 20, humidity: 71, rainMm: 0, rainChance: 15, gddDaily: 15.5, condition: 'Clear Sky', solar: 870 },
-  { day: 'Tue', date: 'Nov 10', tempMax: 32, tempMin: 21, humidity: 66, rainMm: 0, rainChance: 10, gddDaily: 16.5, condition: 'Sunny', solar: 890 },
-];
+function getWeatherDescription(code) {
+  return weatherDescriptions[code] || 'Variable Conditions';
+}
 
-router.get('/current', (req, res) => {
-  res.json(CURRENT_WEATHER);
+function getCurrentHourIndex(times) {
+  const now = Date.now();
+
+  if (!times || !times.length) return 0;
+
+  let closestIndex = 0;
+  let smallestDifference = Infinity;
+
+  times.forEach((time, index) => {
+    const difference = Math.abs(new Date(time).getTime() - now);
+
+    if (difference < smallestDifference) {
+      smallestDifference = difference;
+      closestIndex = index;
+    }
+  });
+
+  return closestIndex;
+}
+
+async function fetchOpenMeteo() {
+  const params = new URLSearchParams({
+    latitude: FARM_LATITUDE,
+    longitude: FARM_LONGITUDE,
+    timezone: 'auto',
+    forecast_days: '7',
+
+    current: [
+      'temperature_2m',
+      'relative_humidity_2m',
+      'apparent_temperature',
+      'precipitation',
+      'weather_code',
+      'wind_speed_10m',
+      'wind_direction_10m',
+      'shortwave_radiation',
+      'uv_index',
+    ].join(','),
+
+    hourly: [
+      'relative_humidity_2m',
+      'shortwave_radiation',
+      'soil_moisture_0_to_7cm',
+      'soil_temperature_0cm',
+    ].join(','),
+
+    daily: [
+      'temperature_2m_max',
+      'temperature_2m_min',
+      'precipitation_sum',
+      'precipitation_probability_max',
+      'weather_code',
+      'et0_fao_evapotranspiration',
+      'shortwave_radiation_sum',
+    ].join(','),
+  });
+
+  const response = await fetch(`${OPEN_METEO_URL}?${params}`);
+
+  if (!response.ok) {
+    throw new Error(`Open-Meteo API error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// GET /api/weather/current
+router.get('/current', async (req, res) => {
+  try {
+    const data = await fetchOpenMeteo();
+
+    const current = data.current;
+    const daily = data.daily;
+    const hourly = data.hourly;
+
+    const hourIndex = getCurrentHourIndex(hourly.time);
+
+    const currentWeather = {
+      location: 'Mysuru Agricultural Region',
+
+      lastUpdated: current.time,
+
+      temperature: current.temperature_2m,
+
+      apparentTemp: current.apparent_temperature,
+
+      tempMin: daily.temperature_2m_min[0],
+
+      tempMax: daily.temperature_2m_max[0],
+
+      humidity: current.relative_humidity_2m,
+
+      rainfall: current.precipitation,
+
+      rainfallProb: daily.precipitation_probability_max[0],
+
+      solarRadiation: current.shortwave_radiation,
+
+      uvIndex: current.uv_index,
+
+      windSpeed: current.wind_speed_10m,
+
+      windDirection: current.wind_direction_10m,
+
+      soilMoisture:
+        hourly.soil_moisture_0_to_7cm?.[hourIndex] != null
+          ? hourly.soil_moisture_0_to_7cm[hourIndex] * 100
+          : null,
+
+      soilTemperature:
+        hourly.soil_temperature_0cm?.[hourIndex] ?? null,
+
+      evapotranspiration:
+        daily.et0_fao_evapotranspiration[0],
+    };
+
+    res.json(currentWeather);
+
+  } catch (error) {
+    console.error('Current weather error:', error.message);
+
+    res.status(500).json({
+      message: 'Unable to retrieve current weather from Open-Meteo',
+      error: error.message,
+    });
+  }
 });
 
-router.get('/forecast', (req, res) => {
-  res.json(FORECAST_7_DAYS);
+// GET /api/weather/forecast
+router.get('/forecast', async (req, res) => {
+  try {
+    const data = await fetchOpenMeteo();
+
+    const daily = data.daily;
+
+    const forecast = daily.time.map((date, index) => {
+      const maxTemp = daily.temperature_2m_max[index];
+      const minTemp = daily.temperature_2m_min[index];
+
+      const meanTemp = (maxTemp + minTemp) / 2;
+
+      // General Growing Degree Days.
+      // Crop-specific base temperatures will be applied
+      // in the irrigation and growth prediction calculations.
+      const gddDaily = Math.max(0, meanTemp - 10);
+
+      const weatherCode = daily.weather_code[index];
+
+      return {
+        day: new Date(`${date}T12:00:00`).toLocaleDateString(
+          'en-US',
+          { weekday: 'short' }
+        ),
+
+        date,
+
+        tempMax: maxTemp,
+
+        tempMin: minTemp,
+
+        humidity: null,
+
+        rainMm: daily.precipitation_sum[index],
+
+        rainChance:
+          daily.precipitation_probability_max[index],
+
+        gddDaily: Number(gddDaily.toFixed(1)),
+
+        condition: getWeatherDescription(weatherCode),
+
+        solar:
+          daily.shortwave_radiation_sum[index],
+
+        evapotranspiration:
+          daily.et0_fao_evapotranspiration[index],
+
+        weatherCode,
+      };
+    });
+
+    res.json(forecast);
+
+  } catch (error) {
+    console.error('Forecast error:', error.message);
+
+    res.status(500).json({
+      message: 'Unable to retrieve weather forecast from Open-Meteo',
+      error: error.message,
+    });
+  }
 });
 
 export default router;
