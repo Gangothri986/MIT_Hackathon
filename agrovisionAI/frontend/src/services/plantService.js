@@ -240,94 +240,77 @@ export const INITIAL_PLANTS = [
   },
 ];
 
+
 export const plantService = {
+  // GET ALL PLANTS FROM MONGODB
   async getPlants(filters = {}) {
-    try {
-      const response = await apiClient.get('/plants', { params: filters });
-      if (Array.isArray(response.data) && response.data.length > 0) {
-        return response.data;
-      }
-    } catch {
-      // Backend not running, gracefully use local storage
-    }
+    const response = await apiClient.get('/plants', {
+      params: filters,
+    });
 
-    let plants = JSON.parse(localStorage.getItem('agrovision_plants')) || INITIAL_PLANTS;
-    if (filters.cropType && filters.cropType !== 'All') {
-      plants = plants.filter((p) => p.cropType.toLowerCase() === filters.cropType.toLowerCase());
-    }
-    if (filters.stage && filters.stage !== 'All') {
-      plants = plants.filter((p) => p.currentStage.toLowerCase() === filters.stage.toLowerCase());
-    }
-    if (filters.health && filters.health !== 'All') {
-      plants = plants.filter((p) => p.healthStatus.toLowerCase() === filters.health.toLowerCase());
-    }
-    if (filters.risk && filters.risk !== 'All') {
-      plants = plants.filter((p) => p.riskLevel.toLowerCase() === filters.risk.toLowerCase());
-    }
-    if (filters.search) {
-      const q = filters.search.toLowerCase();
-      plants = plants.filter((p) => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q) || p.location.toLowerCase().includes(q));
-    }
-    return plants;
+    return Array.isArray(response.data) ? response.data : [];
   },
 
+  // GET ONE PLANT
   async getPlantById(id) {
-    try {
-      const response = await apiClient.get(`/plants/${id}`);
-      if (response.data) return response.data;
-    } catch {
-      // Fallback
-    }
-
-    const plants = JSON.parse(localStorage.getItem('agrovision_plants')) || INITIAL_PLANTS;
-    return plants.find((p) => p.id === id || p.customId === id) || INITIAL_PLANTS[0];
+    const response = await apiClient.get(`/plants/${id}`);
+    return response.data;
   },
 
+  // REGISTER NEW PLANT
   async createPlant(plantData) {
-    try {
-      const res = await apiClient.post('/plants', plantData);
-      if (res.data) {
-        const plants = JSON.parse(localStorage.getItem('agrovision_plants')) || INITIAL_PLANTS;
-        localStorage.setItem('agrovision_plants', JSON.stringify([res.data, ...plants]));
-        return res.data;
-      }
-    } catch {
-      // Fallback
-    }
+  const response = await apiClient.post('/plants', plantData);
 
-    const plants = JSON.parse(localStorage.getItem('agrovision_plants')) || INITIAL_PLANTS;
-    const newPlant = {
-      ...plantData,
-      id: `PLT-${(plantData.cropType || 'CRP').slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
-      daysAfterPlanting: Math.floor((new Date() - new Date(plantData.plantedDate || Date.now())) / (1000 * 60 * 60 * 24)) || 1,
-      stageIndex: GROWTH_STAGES.findIndex(s => s.name === plantData.currentStage) + 1 || 2,
-      healthScore: plantData.healthScore || 90,
-      riskLevel: plantData.riskLevel || 'Low',
-      lastAnalysedDate: new Date().toISOString().split('T')[0],
-      imageUrl: plantData.imageUrl || IMAGES.tomatoFlowering,
-      history: [
-        {
-          date: new Date().toISOString().split('T')[0],
-          stage: plantData.currentStage || 'Vegetative Growth',
-          healthScore: 90,
-          imageUrl: plantData.imageUrl || IMAGES.tomatoFlowering,
-          note: 'Plant registered in AgroVision AI.',
-        }
-      ],
-    };
-    const updated = [newPlant, ...plants];
-    localStorage.setItem('agrovision_plants', JSON.stringify(updated));
-    return newPlant;
-  },
-    async predictWheatStage(plantId, imageFile) {
-    const formData = new FormData();
-    formData.append('image', imageFile);
+  if (!response.data?.plant?._id) {
+    throw new Error('Plant was not saved in MongoDB.');
+  }
 
-    const response = await apiClient.post(
-      `/plants/${plantId}/predict-growth-stage`,
-      formData
+  return response.data.plant;
+},
+
+  // UPDATE EXISTING PLANT AND ITS GROWTH HISTORY
+  async updatePlant(id, updateData) {
+    const response = await apiClient.put(
+      `/plants/${id}`,
+      updateData
     );
+
+    if (!response.data?._id) {
+      throw new Error('Plant update was not confirmed by MongoDB.');
+    }
 
     return response.data;
   },
 };
+
+
+export const predictionService = {
+  async analyzeGrowthStage({ imageFile, cropType, location }) {
+    if (!imageFile) {
+      throw new Error('Please select a plant image.');
+    }
+
+    const formData = new FormData();
+
+    // Must match upload.single('image') in analysis.js
+    formData.append('image', imageFile);
+
+    // These names are accepted by the updated analysis.js
+    formData.append('crop_type', cropType);
+    formData.append('location', location || 'North Field');
+
+    const response = await apiClient.post(
+      '/analyze',
+      formData
+    );
+
+    if (!response.data?.success) {
+      throw new Error(
+        response.data?.message || 'Growth analysis failed.'
+      );
+    }
+
+    return response.data;
+  },
+};
+

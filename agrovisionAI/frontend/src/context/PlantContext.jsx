@@ -1,8 +1,18 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { plantService, INITIAL_PLANTS } from '../services/plantService';
-import { IMAGES } from '../assets/images';
+
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+} from 'react';
+
+import { plantService } from '../services/plantService';
 
 const PlantContext = createContext(null);
+
+// ======================================================
+// INITIAL RECOMMENDATIONS
+// ======================================================
 
 const INITIAL_RECOMMENDATIONS = [
   {
@@ -12,8 +22,8 @@ const INITIAL_RECOMMENDATIONS = [
     plantName: 'Tomato Arka Vikas - Row 12',
     crop: 'Tomato',
     stage: 'Bud Formation',
-    reason: 'Early Blight (Alternaria solani) detected with 96.4% confidence on lower leaves.',
-    suggestedAction: 'Apply foliar spray of Mancozeb (2.5 g/L) or Copper Oxychloride. Prune lower 15 cm leaves immediately to halt spore splash.',
+    reason: 'Early Blight detected on lower leaves.',
+    suggestedAction: 'Inspect affected leaves and follow locally approved disease-management guidance.',
     category: 'Disease Treatment',
     completed: false,
     timestamp: '2 hours ago',
@@ -25,8 +35,8 @@ const INITIAL_RECOMMENDATIONS = [
     plantName: 'All Monitored Plots',
     crop: 'Multi-Crop',
     stage: 'All Stages',
-    reason: 'Forecast predicts 28mm heavy rainfall and >82% humidity over the coming weekend.',
-    suggestedAction: 'Clear furrow drainage channels across Plot A & C. Suspend automatic drip irrigation valves starting Friday morning.',
+    reason: 'Forecast indicates possible heavy rainfall and high humidity.',
+    suggestedAction: 'Inspect drainage channels and adjust irrigation based on field conditions.',
     category: 'Irrigation & Drainage',
     completed: false,
     timestamp: '4 hours ago',
@@ -38,8 +48,8 @@ const INITIAL_RECOMMENDATIONS = [
     plantName: 'Tomato Arka Rakshak - Row 4',
     crop: 'Tomato',
     stage: 'Flowering',
-    reason: 'Anthesis in peak bloom; high heat index projected during midday (34°C).',
-    suggestedAction: 'Activate polyhouse shade net (50%) and run micro-misting for 15 mins around 13:00 to prevent blossom drop.',
+    reason: 'Flowering crops may be affected by high temperatures.',
+    suggestedAction: 'Monitor temperature and maintain suitable growing conditions.',
     category: 'Microclimate Protection',
     completed: false,
     timestamp: '6 hours ago',
@@ -51,8 +61,8 @@ const INITIAL_RECOMMENDATIONS = [
     plantName: 'Byadgi Chilli - Plot C Bed 1',
     crop: 'Chilli',
     stage: 'Vegetative Growth',
-    reason: 'Rapid branch multiplication; approaching Bud Formation milestone in ~10 days.',
-    suggestedAction: 'Apply balanced 19:19:19 water-soluble fertigation (3 g/plant) to build carbohydrate reserves for flower buds.',
+    reason: 'Plant approaching its next growth milestone.',
+    suggestedAction: 'Monitor branching, soil moisture and nutrient requirements.',
     category: 'Fertigation',
     completed: false,
     timestamp: '1 day ago',
@@ -63,21 +73,25 @@ const INITIAL_RECOMMENDATIONS = [
     plantId: 'PLT-PAD-032',
     plantName: 'Jyothi Paddy - Sector 7',
     crop: 'Paddy',
-    stage: 'Fruit Formation',
-    reason: 'Milky grain fill proceeding normally; 4 cm water depth verified.',
-    suggestedAction: 'Schedule periodic panicle inspection in 4 days. Maintain continuous shallow submergence until dough stage.',
+    stage: 'Grain Filling',
+    reason: 'Grain filling stage requires periodic inspection.',
+    suggestedAction: 'Inspect panicles and maintain suitable field water conditions.',
     category: 'Crop Inspection',
     completed: false,
     timestamp: '1 day ago',
   },
 ];
 
+// ======================================================
+// INITIAL NOTIFICATIONS
+// ======================================================
+
 const INITIAL_NOTIFICATIONS = [
   {
     id: 'NOTIF-01',
     type: 'critical',
     title: 'High Fungal Disease Risk Alert',
-    message: 'High humidity (>82%) combined with rainfall will create prime conditions for Early Blight proliferation over the weekend.',
+    message: 'Monitor humidity and rainfall conditions in your fields.',
     timestamp: 'Just now',
     read: false,
     link: '/weather',
@@ -86,7 +100,7 @@ const INITIAL_NOTIFICATIONS = [
     id: 'NOTIF-02',
     type: 'warning',
     title: 'Disease Detected on Tomato Row 12',
-    message: 'AI Diagnostic classified Early Blight on PLT-TOM-088. Foliar fungicide treatment recommended.',
+    message: 'Review the tomato disease analysis and recommended actions.',
     timestamp: '2 hours ago',
     read: false,
     link: '/disease',
@@ -95,7 +109,7 @@ const INITIAL_NOTIFICATIONS = [
     id: 'NOTIF-03',
     type: 'success',
     title: 'Milestone Reached: Flowering Stage Confirmed',
-    message: 'Tomato Arka Rakshak (PLT-TOM-204) transitioned into full Flowering stage with 94.6% model confidence.',
+    message: 'A tomato plant has reached the flowering stage.',
     timestamp: 'Yesterday',
     read: false,
     link: '/predictions',
@@ -103,151 +117,337 @@ const INITIAL_NOTIFICATIONS = [
   {
     id: 'NOTIF-04',
     type: 'info',
-    title: 'Heat Stress Warning for Friday',
-    message: 'Peak temperatures will reach 34°C. Polyhouse misting recommended for flowering crops.',
+    title: 'Heat Stress Warning',
+    message: 'Monitor temperature conditions for flowering crops.',
     timestamp: '1 day ago',
     read: true,
     link: '/risk-assessment',
   },
 ];
 
+// ======================================================
+// HELPERS
+// ======================================================
+
+const normalizePlant = (plant) => ({
+  ...plant,
+  id: plant.customId || plant._id,
+});
+
+const getPlantIdentifier = (plant) =>
+  plant?.customId || plant?._id || plant?.id;
+
+// ======================================================
+// PLANT PROVIDER
+// ======================================================
+
 export function PlantProvider({ children }) {
-  const [plants, setPlants] = useState(() => {
-    const saved = localStorage.getItem('agrovision_plants');
-    return saved ? JSON.parse(saved) : INITIAL_PLANTS;
-  });
+  const [plants, setPlants] = useState([]);
+  const [plantsLoading, setPlantsLoading] = useState(true);
+  const [plantsError, setPlantsError] = useState(null);
+
+  const [selectedPlant, setSelectedPlant] = useState(null);
 
   const [recommendations, setRecommendations] = useState(() => {
-    const saved = localStorage.getItem('agrovision_recommendations');
-    return saved ? JSON.parse(saved) : INITIAL_RECOMMENDATIONS;
+    try {
+      const saved = localStorage.getItem(
+        'agrovision_recommendations'
+      );
+
+      return saved
+        ? JSON.parse(saved)
+        : INITIAL_RECOMMENDATIONS;
+    } catch {
+      return INITIAL_RECOMMENDATIONS;
+    }
   });
 
   const [notifications, setNotifications] = useState(() => {
-    const saved = localStorage.getItem('agrovision_notifications');
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+    try {
+      const saved = localStorage.getItem(
+        'agrovision_notifications'
+      );
+
+      return saved
+        ? JSON.parse(saved)
+        : INITIAL_NOTIFICATIONS;
+    } catch {
+      return INITIAL_NOTIFICATIONS;
+    }
   });
 
-  const [selectedPlant, setSelectedPlant] = useState(() => plants[0] || null);
+  // ====================================================
+  // FETCH PLANTS FROM MONGODB
+  // ====================================================
+
+  const fetchPlants = async () => {
+    try {
+      setPlantsLoading(true);
+      setPlantsError(null);
+
+      const data = await plantService.getPlants();
+
+      const normalizedPlants = Array.isArray(data)
+        ? data.map(normalizePlant)
+        : [];
+
+      setPlants(normalizedPlants);
+
+      setSelectedPlant((previous) => {
+        if (!previous) {
+          return normalizedPlants[0] || null;
+        }
+
+        const previousId = getPlantIdentifier(previous);
+
+        return (
+          normalizedPlants.find(
+            (plant) =>
+              getPlantIdentifier(plant) === previousId ||
+              plant._id === previous._id
+          ) ||
+          normalizedPlants[0] ||
+          null
+        );
+      });
+
+    } catch (error) {
+      console.error(
+        'Failed to fetch plants from MongoDB:',
+        error
+      );
+
+      setPlantsError(
+        error.response?.data?.message ||
+        error.message ||
+        'Unable to load plants from MongoDB.'
+      );
+
+    } finally {
+      setPlantsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    localStorage.setItem('agrovision_plants', JSON.stringify(plants));
-  }, [plants]);
+    fetchPlants();
+  }, []);
+
+  // ====================================================
+  // SAVE RECOMMENDATIONS LOCALLY
+  // ====================================================
 
   useEffect(() => {
-    localStorage.setItem('agrovision_recommendations', JSON.stringify(recommendations));
+    localStorage.setItem(
+      'agrovision_recommendations',
+      JSON.stringify(recommendations)
+    );
   }, [recommendations]);
 
+  // ====================================================
+  // SAVE NOTIFICATIONS LOCALLY
+  // ====================================================
+
   useEffect(() => {
-    localStorage.setItem('agrovision_notifications', JSON.stringify(notifications));
+    localStorage.setItem(
+      'agrovision_notifications',
+      JSON.stringify(notifications)
+    );
   }, [notifications]);
 
-  const addPlant = async (newPlantData) => {
-  try {
-    const plant = await plantService.createPlant(newPlantData);
+  // ====================================================
+  // ADD NEW PLANT TO MONGODB
+  // ====================================================
 
-    // Ensure the plant was actually saved in MongoDB
-    if (!plant?._id) {
-      throw new Error('Plant was not saved to MongoDB. Missing MongoDB ID.');
+  const addPlant = async (plantData) => {
+    try {
+      const savedPlant = await plantService.createPlant(
+        plantData
+      );
+
+      if (!savedPlant?._id) {
+        throw new Error(
+          'MongoDB did not confirm plant creation.'
+        );
+      }
+
+      const newPlant = normalizePlant(savedPlant);
+
+      setPlants((previous) => [
+        newPlant,
+        ...previous.filter(
+          (plant) => plant._id !== newPlant._id
+        ),
+      ]);
+
+      setSelectedPlant(newPlant);
+
+      return newPlant;
+
+    } catch (error) {
+      console.error('Failed to save plant:', error);
+      throw error;
     }
+  };
 
-    const savedPlant = {
-      ...plant,
-      id: plant.id || plant.customId || plant._id,
-    };
+  // ====================================================
+  // UPDATE PLANT ANALYSIS IN MONGODB
+  // ====================================================
 
-    setPlants((prev) => [savedPlant, ...prev]);
+  const updatePlantAnalysis = async (
+    plantId,
+    analysisResult
+  ) => {
+    try {
+      const existingPlant = plants.find(
+        (plant) =>
+          plant.id === plantId ||
+          plant._id === plantId ||
+          plant.customId === plantId
+      );
 
-    return savedPlant;
-  } catch (error) {
-    console.error('Error creating plant:', error);
-    throw error;
-  }
-};
+      if (!existingPlant) {
+        throw new Error('Plant not found.');
+      }
+
+      const today = new Date()
+        .toISOString()
+        .split('T')[0];
+
+      const updatedImageUrl =
+        analysisResult.imageUrl ||
+        existingPlant.imageUrl;
+
+      const updatedHistory = [
+        ...(existingPlant.history || []),
+        {
+          date: today,
+          stage: analysisResult.currentStage,
+          healthScore:
+            analysisResult.healthScore ??
+            existingPlant.healthScore ??
+            90,
+          imageUrl: updatedImageUrl,
+          note:
+            `Gemini prediction: ${analysisResult.currentStage} ` +
+            `(${analysisResult.confidence}% confidence).`,
+        },
+      ];
+
+      const updateData = {
+        currentStage: analysisResult.currentStage,
+        stageIndex: analysisResult.stageIndex,
+        confidence: analysisResult.confidence,
+        lastAnalysedDate: today,
+        imageUrl: updatedImageUrl,
+        history: updatedHistory,
+      };
+
+      const savedPlant = await plantService.updatePlant(
+        getPlantIdentifier(existingPlant),
+        updateData
+      );
+
+      if (!savedPlant?._id) {
+        throw new Error('Plant update was not confirmed.');
+      }
+
+      const normalizedPlant = normalizePlant(savedPlant);
+
+      setPlants((previous) =>
+        previous.map((plant) =>
+          plant._id === normalizedPlant._id
+            ? normalizedPlant
+            : plant
+        )
+      );
+
+      setSelectedPlant((previous) =>
+        previous?._id === normalizedPlant._id
+          ? normalizedPlant
+          : previous
+      );
+
+      return normalizedPlant;
+
+    } catch (error) {
+      console.error(
+        'Error saving plant analysis:',
+        error
+      );
+
+      throw error;
+    }
+  };
+
+  // ====================================================
+  // RECOMMENDATIONS
+  // ====================================================
+
   const completeRecommendation = (id) => {
-    setRecommendations((prev) =>
-      prev.map((rec) => (rec.id === id ? { ...rec, completed: !rec.completed } : rec))
+    setRecommendations((previous) =>
+      previous.map((recommendation) =>
+        recommendation.id === id
+          ? {
+              ...recommendation,
+              completed: !recommendation.completed,
+            }
+          : recommendation
+      )
     );
   };
 
+  // ====================================================
+  // NOTIFICATIONS
+  // ====================================================
+
   const markNotificationAsRead = (id) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    setNotifications((previous) =>
+      previous.map((notification) =>
+        notification.id === id
+          ? { ...notification, read: true }
+          : notification
+      )
     );
   };
 
   const markAllNotificationsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setNotifications((previous) =>
+      previous.map((notification) => ({
+        ...notification,
+        read: true,
+      }))
+    );
   };
 
   const dismissNotification = (id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
-
-  const updatePlantAnalysis = (plantId, analysisResult) => {
-    setPlants((prev) =>
-      prev.map((p) => {
-        if (p.id === plantId) {
-          return {
-            ...p,
-            currentStage: analysisResult.currentStage,
-            stageIndex: analysisResult.stageIndex,
-            confidence: analysisResult.confidence,
-            healthScore: analysisResult.healthScore || p.healthScore,
-            lastAnalysedDate: new Date().toISOString().split('T')[0],
-            imageUrl: analysisResult.imageUrl || p.imageUrl,
-            history: [
-              ...p.history,
-              {
-                date: new Date().toISOString().split('T')[0],
-                stage: analysisResult.currentStage,
-                healthScore: analysisResult.healthScore || p.healthScore,
-                imageUrl: analysisResult.imageUrl || p.imageUrl,
-                note: `Deep learning stage prediction: ${analysisResult.currentStage} (${analysisResult.confidence}% confidence).`,
-              },
-            ],
-          };
-        }
-        return p;
-      })
+    setNotifications((previous) =>
+      previous.filter(
+        (notification) => notification.id !== id
+      )
     );
   };
-const updateWheatPrediction = (plantId, prediction) => {
-  setPlants((prev) =>
-    prev.map((p) => {
-      if (p.id === plantId || p._id === plantId || p.customId === plantId) {
-        return {
-          ...p,
-          currentStage: prediction.stage,
-          stageIndex: prediction.stageIndex,
-          confidence: prediction.confidence,
-          lastAnalysedDate: new Date().toISOString().split('T')[0],
-          history: [
-            ...(p.history || []),
-            {
-              date: new Date().toISOString().split('T')[0],
-              stage: prediction.stage,
-              healthScore: p.healthScore || 90,
-              imageUrl: p.imageUrl,
-              note: `Nyckel Wheat growth-stage prediction: ${prediction.stage} (${prediction.confidence}% confidence).`,
-            },
-          ],
-        };
-      }
-      return p;
-    })
-  );
-};
+
+  // ====================================================
+  // CONTEXT VALUE
+  // ====================================================
+
   return (
     <PlantContext.Provider
       value={{
         plants,
+        plantsLoading,
+        plantsError,
+        fetchPlants,
+
         selectedPlant,
         setSelectedPlant,
+
         addPlant,
         updatePlantAnalysis,
-        updateWheatPrediction,
+
         recommendations,
         completeRecommendation,
+
         notifications,
         markNotificationAsRead,
         markAllNotificationsRead,
@@ -259,10 +459,18 @@ const updateWheatPrediction = (plantId, prediction) => {
   );
 }
 
+// ======================================================
+// CUSTOM HOOK
+// ======================================================
+
 export const usePlant = () => {
   const context = useContext(PlantContext);
+
   if (!context) {
-    throw new Error('usePlant must be used within a PlantProvider');
+    throw new Error(
+      'usePlant must be used within a PlantProvider'
+    );
   }
+
   return context;
 };

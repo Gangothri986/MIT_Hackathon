@@ -101,7 +101,7 @@ export default function Signup() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Ramesh Kumar"
+                  placeholder="e.g. Name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-emerald-600"
@@ -116,7 +116,7 @@ export default function Signup() {
                 <input
                   type="text"
                   required
-                  placeholder="ramesh@agrovision.in or +91 9876543210"
+                  placeholder="name@agrovision.in or +91 9876543210"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-emerald-600"

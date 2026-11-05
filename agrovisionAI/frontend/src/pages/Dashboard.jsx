@@ -398,60 +398,97 @@ export default function Dashboard() {
         </div>
 
         {/* Upcoming Predicted Growth Milestones (5 cols) */}
-        <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+        
+{/* Upcoming Predicted Growth Milestones (5 cols) */}
+<div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+  <div className="flex items-center justify-between">
+    <div>
+      <h3 className="font-display font-bold text-sm text-slate-900 tracking-tight">
+        Upcoming Harvest Milestones
+      </h3>
+      <p className="text-xs text-slate-500">Predicted crop stage transitions</p>
+    </div>
+    <button
+      onClick={() => navigate('/predictions')}
+      className="text-xs font-semibold text-emerald-700 hover:underline"
+    >
+      Timeline
+    </button>
+  </div>
+
+  <div className="space-y-3">
+    {plants.slice(0, 3).map((plant) => {
+      const milestone = plant.estimatedNextMilestone;
+
+      return (
+        <div
+          key={plant.id}
+          className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2 text-xs"
+        >
           <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-display font-bold text-sm text-slate-900 tracking-tight">Upcoming Harvest Milestones</h3>
-              <p className="text-xs text-slate-500">Predicted crop stage transitions</p>
-            </div>
-            <button
-              onClick={() => navigate('/predictions')}
-              className="text-xs font-semibold text-emerald-700 hover:underline"
-            >
-              Timeline
-            </button>
+            <span className="font-bold text-slate-900 truncate">
+              {plant.name}
+            </span>
+
+            <span className="text-emerald-700 font-semibold text-[11px] font-mono">
+              {milestone?.daysRemaining != null
+                ? `~${milestone.daysRemaining} days remaining`
+                : 'Forecast unavailable'}
+            </span>
           </div>
 
-          <div className="space-y-3">
-            {plants.slice(0, 3).map((plant) => (
-              <div
-                key={plant.id}
-                className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-2 text-xs"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-900 truncate">{plant.name}</span>
-                  <span className="text-emerald-700 font-semibold text-[11px] font-mono">
-                    ~{plant.estimatedNextMilestone.daysRemaining} days remaining
-                  </span>
-                </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-600">
+            <span>
+              Current: <strong>{plant.currentStage || 'Unknown'}</strong>
+            </span>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+            <span>
+              Next:{' '}
+              <strong className="text-emerald-800">
+                {milestone?.stage || 'Not predicted'}
+              </strong>
+            </span>
+          </div>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-600">
-                  <span>Current: <strong>{plant.currentStage}</strong></span>
-                  <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Next: <strong className="text-emerald-800">{plant.estimatedNextMilestone.stage}</strong></span>
-                </div>
+          <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-600 rounded-full"
+              style={{
+                width: `${Math.min(
+                  100,
+                  Math.max(
+                    0,
+                    Math.round(
+                      ((plant.gddAccumulated || 0) /
+                        (plant.gddTargetMaturity || 1400)) *
+                        100
+                    )
+                  )
+                )}%`,
+              }}
+            />
+          </div>
 
-                {/* Progress bar to milestone */}
-                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-600 rounded-full"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.round((plant.gddAccumulated / (plant.gddTargetMaturity || 1400)) * 100)
-                      )}%`,
-                    }}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                  <span>Accum GDD: {plant.gddAccumulated} °C-d</span>
-                  <span>Target Date: {plant.estimatedNextMilestone.estimatedDate}</span>
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+            <span>
+              Accum GDD: {plant.gddAccumulated ?? 'N/A'} °C-d
+            </span>
+            <span>
+              Target Date: {milestone?.estimatedDate || 'N/A'}
+            </span>
           </div>
         </div>
+      );
+    })}
+
+    {plants.length === 0 && (
+      <p className="text-xs text-slate-500 text-center py-6">
+        No plants monitored yet. Analyse a plant to get started.
+      </p>
+    )}
+  </div>
+</div>
+
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { apiClient, isDemoMode } from './api';
+import { apiClient } from './api';
 
 export const CURRENT_WEATHER_DATA = {
   location: 'Local Farm Weather Station',

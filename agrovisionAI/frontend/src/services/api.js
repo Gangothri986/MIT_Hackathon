@@ -1,56 +1,25 @@
-// import axios from 'axios';
-
-// // Backend API URL defaults to /api (proxied via Vite to http://localhost:5000 in dev)
-// const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
-
-// export const apiClient = axios.create({
-//   baseURL: API_BASE_URL,
-//   timeout: 10000,
-//   headers: {
-//     'Content-Type': 'application/json',
-//   },
-// });
-
-// // Request interceptor to inject Authorization token if available
-// apiClient.interceptors.request.use(
-//   (config) => {
-//     const token = localStorage.getItem('agrovision_auth_token') || sessionStorage.getItem('agrovision_auth_token');
-//     if (token) {
-//       config.headers.Authorization = `Bearer ${token}`;
-//     }
-//     return config;
-//   },
-//   (error) => Promise.reject(error)
-// );
-
-// // Helper to check backend health
-// export const checkBackendHealth = async () => {
-//   try {
-//     const res = await apiClient.get('/health', { timeout: 2500 });
-//     return res.data?.status === 'online';
-//   } catch {
-//     return false;
-//   }
-// };
-
-// // Check if running in offline demo mode when backend is unreachable
-// export const isDemoMode = () => {
-//   return localStorage.getItem('agrovision_force_backend') !== 'true';
-// };
-
-// export const setDemoMode = () => {};
 
 import axios from 'axios';
 
-// Backend API URL defaults to /api (proxied via Vite to http://localhost:5000 in development)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+// ======================================================
+// BACKEND API CONFIGURATION
+// ======================================================
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || '/api';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 60000, // Allow enough time for Gemini image analysis
+  timeout: 60000,
+  headers: {
+    Accept: 'application/json',
+  },
 });
 
-// Request interceptor to inject Authorization token if available
+// ======================================================
+// AUTHENTICATION TOKEN
+// ======================================================
+
 apiClient.interceptors.request.use(
   (config) => {
     const token =
@@ -66,19 +35,68 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Helper to check backend health
+// ======================================================
+// RESPONSE ERROR HANDLING
+// ======================================================
+
+apiClient.interceptors.response.use(
+  (response) => response,
+
+  (error) => {
+    if (error.response) {
+      console.error(
+        'Backend API Error:',
+        error.response.status,
+        error.response.data
+      );
+    } else if (error.request) {
+      console.error(
+        'Backend server is not responding:',
+        error.message
+      );
+    } else {
+      console.error('API request error:', error.message);
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+// ======================================================
+// BACKEND HEALTH CHECK
+// ======================================================
+
 export const checkBackendHealth = async () => {
   try {
-    const res = await apiClient.get('/health', { timeout: 5000 });
-    return res.data?.status === 'online';
-  } catch {
+    const response = await apiClient.get('/health', {
+      timeout: 5000,
+    });
+
+    return response.data?.status === 'online';
+  } catch (error) {
+    console.error('Backend health check failed:', error.message);
     return false;
   }
 };
 
-// Check if running in offline demo mode when backend is unreachable
-export const isDemoMode = () => {
-  return localStorage.getItem('agrovision_force_backend') !== 'true';
-};
+// ======================================================
+// IMAGE URL HELPER
+// ======================================================
 
-export const setDemoMode = () => {};
+export const getImageUrl = (imageUrl) => {
+  if (!imageUrl) return '';
+
+  if (
+    imageUrl.startsWith('http://') ||
+    imageUrl.startsWith('https://') ||
+    imageUrl.startsWith('blob:')
+  ) {
+    return imageUrl;
+  }
+
+  const backendOrigin =
+    import.meta.env.VITE_BACKEND_URL ||
+    'http://127.0.0.1:5000';
+
+  return `${backendOrigin}${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`;
+};

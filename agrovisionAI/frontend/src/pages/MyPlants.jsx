@@ -110,12 +110,13 @@ const [predictionError, setPredictionError] = useState('');
     setIsAddModalOpen(false);
 
     setNewPlantData({
-      name: '',
-      cropType: 'Tomato',
-      location: '',
-      plantingDate: '',
-      currentStage: 'Vegetative Growth',
-    });
+  name: '',
+  cropType: 'Tomato',
+  variety: 'Table Tomato',
+  location: 'North Greenhouse - Bed 2',
+  plantedDate: new Date().toISOString().split('T')[0],
+  currentStage: 'Vegetative Growth',
+});
   } catch (error) {
     console.error('Plant creation failed:', error);
     alert('Could not save plant. Please check your backend.');
@@ -204,7 +205,8 @@ const handleWheatPrediction = async () => {
             onChange={(e) => setCropFilter(e.target.value)}
             className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-600 font-medium"
           >
-            <option value="Tomato">Tomato</option>
+            <option value="All">All Crops</option>
+<option value="Tomato">Tomato</option>
 <option value="Chilli">Chilli</option>
 <option value="Paddy">Paddy</option>
 <option value="Wheat">Wheat</option>
@@ -325,7 +327,9 @@ const handleWheatPrediction = async () => {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500 font-medium">
-  Stage {plant.cropType === 'Wheat' ? plant.stageIndex + 1 : plant.stageIndex} of {plant.cropType === 'Wheat' ? 4 : 6}
+  Stage {(Number(plant.stageIndex) || 0) + 1} of {
+  plant.cropType === 'Wheat' ? 4 : 6
+}
 </span>
                     <strong className="text-emerald-800">{plant.currentStage}</strong>
                   </div>

@@ -1,378 +1,25 @@
 
-// import 'dotenv/config';
-// import express from 'express';
-// import multer from 'multer';
-// import mongoose from 'mongoose';
-// import { Plant } from '../models/Plant.js';
-
-// const router = express.Router();
-
-// // Image upload configuration
-// const upload = multer({
-//   storage: multer.memoryStorage(),
-//   limits: {
-//     fileSize: 15 * 1024 * 1024, // 15 MB
-//   },
-//   fileFilter: (req, file, cb) => {
-//     if (file.mimetype.startsWith('image/')) {
-//       cb(null, true);
-//     } else {
-//       cb(new Error('Only image files are allowed'));
-//     }
-//   },
-// });
-
-// // Nyckel configuration
-// const NYCKEL_CLIENT_ID = process.env.NYCKEL_CLIENT_ID;
-// const NYCKEL_CLIENT_SECRET = process.env.NYCKEL_CLIENT_SECRET;
-// const NYCKEL_FUNCTION_ID = process.env.NYCKEL_FUNCTION_ID;
-
-// const NYCKEL_TOKEN_URL = 'https://www.nyckel.com/connect/token';
-
-// let cachedToken = null;
-// let tokenExpiresAt = 0;
-
-// // Get and cache Nyckel access token
-// async function getNyckelToken() {
-//   if (cachedToken && Date.now() < tokenExpiresAt) {
-//     return cachedToken;
-//   }
-
-//   if (!NYCKEL_CLIENT_ID || !NYCKEL_CLIENT_SECRET || !NYCKEL_FUNCTION_ID) {
-//     throw new Error('Nyckel environment variables are missing');
-//   }
-
-//   const body = new URLSearchParams({
-//     grant_type: 'client_credentials',
-//     client_id: NYCKEL_CLIENT_ID,
-//     client_secret: NYCKEL_CLIENT_SECRET,
-//   });
-
-//   const response = await fetch(NYCKEL_TOKEN_URL, {
-//     method: 'POST',
-//     headers: {
-//       'Content-Type': 'application/x-www-form-urlencoded',
-//     },
-//     body,
-//   });
-
-//   const data = await response.json();
-
-//   if (!response.ok || !data.access_token) {
-//     throw new Error('Unable to authenticate with Nyckel');
-//   }
-
-//   cachedToken = data.access_token;
-
-//   const expiresIn = Number(data.expires_in) || 3600;
-//   tokenExpiresAt = Date.now() + Math.max(expiresIn - 60, 0) * 1000;
-
-//   return cachedToken;
-// }
-
-// // Send image to Nyckel Wheat classifier
-// async function predictWheatStage(imageBuffer, mimetype) {
-//   const token = await getNyckelToken();
-
-//   const base64Image = imageBuffer.toString('base64');
-//   const imageData = `data:${mimetype};base64,${base64Image}`;
-
-//   const response = await fetch(
-//     `https://www.nyckel.com/v1/functions/${NYCKEL_FUNCTION_ID}/invoke?capture=false`,
-//     {
-//       method: 'POST',
-//       headers: {
-//         Authorization: `Bearer ${token}`,
-//         'Content-Type': 'application/json',
-//       },
-//       body: JSON.stringify({
-//         data: imageData,
-//       }),
-//     }
-//   );
-
-//   const result = await response.json();
-
-//   if (!response.ok) {
-//     throw new Error('Nyckel image prediction failed');
-//   }
-
-//   return result;
-// }
-
-// // Stage index mapping
-// const wheatStageIndexes = {
-//   Seedling: 0,
-//   Flowering: 1,
-//   Fruiting: 2,
-//   Mature: 3,
-// };
-
-// // GET /api/plants - list plants with filters
-// router.get('/', async (req, res) => {
-//   try {
-//     const { cropType, stage, health, risk, search } = req.query;
-//     const query = {};
-
-//     if (cropType && cropType !== 'All') {
-//       query.cropType = cropType;
-//     }
-//     if (stage && stage !== 'All') {
-//       query.currentStage = stage;
-//     }
-//     if (health && health !== 'All') {
-//       query.healthStatus = health;
-//     }
-//     if (risk && risk !== 'All') {
-//       query.riskLevel = risk;
-//     }
-//     if (search) {
-//       query.$or = [
-//         { name: { $regex: search, $options: 'i' } },
-//         { customId: { $regex: search, $options: 'i' } },
-//         { location: { $regex: search, $options: 'i' } },
-//       ];
-//     }
-
-//     const plants = await Plant.find(query).sort({ updatedAt: -1 });
-//     res.json(plants);
-//   } catch (error) {
-//     console.error('Error fetching plants:', error);
-//     res.status(500).json({ message: 'Error retrieving plant records' });
-//   }
-// });
-
-// // POST /api/plants/:id/predict-growth-stage
-// // Upload a wheat image and update its growth stage using Nyckel
-// router.post('/:id/predict-growth-stage', upload.single('image'), async (req, res) => {
-//   try {
-//     if (!req.file) {
-//       return res.status(400).json({
-//         message: 'Please upload a wheat plant image using the image field',
-//       });
-//     }
-
-//     const plantQuery = mongoose.isValidObjectId(req.params.id)
-//       ? { $or: [{ customId: req.params.id }, { _id: req.params.id }] }
-//       : { customId: req.params.id };
-
-//     const plant = await Plant.findOne(plantQuery);
-
-//     if (!plant) {
-//       return res.status(404).json({ message: 'Plant not found' });
-//     }
-
-//     if (plant.cropType !== 'Wheat') {
-//       return res.status(400).json({
-//         message: 'Nyckel growth-stage prediction is currently available only for Wheat plants',
-//       });
-//     }
-
-//     const prediction = await predictWheatStage(
-//       req.file.buffer,
-//       req.file.mimetype
-//     );
-
-//     const predictedStage = prediction.labelName;
-
-//     if (!Object.prototype.hasOwnProperty.call(wheatStageIndexes, predictedStage)) {
-//       return res.status(502).json({
-//         message: 'Nyckel returned an unknown growth-stage label',
-//         receivedLabel: predictedStage,
-//       });
-//     }
-
-//     let confidence = Number(prediction.confidence);
-
-//     if (!Number.isFinite(confidence)) {
-//       return res.status(502).json({
-//         message: 'Nyckel did not return a valid confidence score',
-//       });
-//     }
-
-//     // Convert decimal confidence (0-1) into percentage (0-100)
-//     if (confidence <= 1) {
-//       confidence *= 100;
-//     }
-
-//     const today = new Date().toISOString().split('T')[0];
-
-//     // Update plant record
-//     plant.currentStage = predictedStage;
-//     plant.stageIndex = wheatStageIndexes[predictedStage];
-//     plant.confidence = Number(confidence.toFixed(2));
-//     plant.lastAnalysedDate = today;
-
-//     // Add prediction to history
-//     plant.history.push({
-//       date: today,
-//       stage: predictedStage,
-//       healthScore: plant.healthScore,
-//       note: `Growth stage predicted by Nyckel Wheat classifier with ${confidence.toFixed(2)}% confidence.`,
-//     });
-
-//     await plant.save();
-
-//     res.json({
-//       success: true,
-//       message: 'Wheat growth stage predicted and plant record updated successfully',
-//       prediction: {
-//         stage: predictedStage,
-//         confidence: Number(confidence.toFixed(2)),
-//         stageIndex: wheatStageIndexes[predictedStage],
-//       },
-//       plant,
-//     });
-//   } catch (error) {
-//     console.error('Wheat growth-stage prediction error:', error.message);
-
-//     res.status(500).json({
-//       message: 'Unable to predict wheat growth stage',
-//       error: error.message,
-//     });
-//   }
-// });
-
-// // GET /api/plants/:id - get single plant
-// router.get('/:id', async (req, res) => {
-//   try {
-//     const plant = await Plant.findOne({
-//       $or: [{ customId: req.params.id }, { _id: req.params.id }],
-//     });
-
-//     if (!plant) {
-//       return res.status(404).json({ message: 'Plant not found' });
-//     }
-
-//     res.json(plant);
-//   } catch (error) {
-//     res.status(500).json({ message: 'Error retrieving plant' });
-//   }
-// });
-
-// // POST /api/plants - register new plant
-// router.post('/', async (req, res) => {
-//   try {
-//     const {
-//       name,
-//       cropType,
-//       variety,
-//       location,
-//       plantedDate,
-//       currentStage,
-//       imageUrl,
-//     } = req.body;
-
-//     const daysAfterPlanting = Math.max(
-//       1,
-//       Math.floor(
-//         (new Date() - new Date(plantedDate || Date.now())) /
-//           (1000 * 60 * 60 * 24)
-//       )
-//     );
-
-//     const customId = `PLT-${(cropType || 'CRP')
-//       .slice(0, 3)
-//       .toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
-
-//     const newPlant = new Plant({
-//       customId,
-//       name,
-//       cropType: cropType || 'Tomato',
-//       variety: variety || 'Commercial Variety',
-//       location: location || 'North Field Bed 1',
-//       plantedDate: plantedDate || new Date().toISOString().split('T')[0],
-//       daysAfterPlanting,
-//       currentStage: currentStage || 'Vegetative Growth',
-//       stageIndex: 2,
-//       confidence: 93.5,
-//       healthStatus: 'Healthy',
-//       healthScore: 90,
-//       riskLevel: 'Low',
-//       lastAnalysedDate: new Date().toISOString().split('T')[0],
-//       imageUrl: imageUrl || '',
-//       soilMoisture: '30%',
-//       gddAccumulated: 400,
-//       estimatedNextMilestone: {
-//         stage: 'Bud Formation',
-//         estimatedDate: new Date(Date.now() + 10 * 86400000)
-//           .toISOString()
-//           .split('T')[0],
-//         daysRemaining: 10,
-//         confidence: 89,
-//       },
-//       history: [
-//         {
-//           date: new Date().toISOString().split('T')[0],
-//           stage: currentStage || 'Vegetative Growth',
-//           healthScore: 90,
-//           imageUrl: imageUrl || '',
-//           note: 'Initial plant record registered in farm system.',
-//         },
-//       ],
-//     });
-
-//     await newPlant.save();
-//     res.status(201).json(newPlant);
-//   } catch (error) {
-//     console.error('Error creating plant:', error);
-//     res.status(500).json({ message: 'Error registering plant' });
-//   }
-// });
-
-// // PUT /api/plants/:id - update plant
-// router.put('/:id', async (req, res) => {
-//   try {
-//     const updated = await Plant.findOneAndUpdate(
-//       { $or: [{ customId: req.params.id }, { _id: req.params.id }] },
-//       { $set: req.body },
-//       { new: true }
-//     );
-
-//     if (!updated) return res.status(404).json({ message: 'Plant not found' });
-
-//     res.json(updated);
-//   } catch (error) {
-//     res.status(500).json({ message: 'Error updating plant' });
-//   }
-// });
-
-// // DELETE /api/plants/:id
-// router.delete('/:id', async (req, res) => {
-//   try {
-//     const deleted = await Plant.findOneAndDelete({
-//       $or: [{ customId: req.params.id }, { _id: req.params.id }],
-//     });
-
-//     if (!deleted) return res.status(404).json({ message: 'Plant not found' });
-
-//     res.json({ message: 'Plant record removed successfully' });
-//   } catch (error) {
-//     res.status(500).json({ message: 'Error deleting plant' });
-//   }
-// });
-
-// export default router;
-
-
-
 import 'dotenv/config';
 import express from 'express';
 import multer from 'multer';
 import mongoose from 'mongoose';
+import { randomBytes } from 'crypto';
+
 import { Plant } from '../models/Plant.js';
 
 const router = express.Router();
 
 // ======================================================
-// IMAGE UPLOAD CONFIGURATION
+// NYCKEL IMAGE UPLOAD
 // ======================================================
 
 const upload = multer({
   storage: multer.memoryStorage(),
+
   limits: {
-    fileSize: 15 * 1024 * 1024, // 15 MB
+    fileSize: 15 * 1024 * 1024,
   },
+
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
@@ -390,7 +37,8 @@ const NYCKEL_CLIENT_ID = process.env.NYCKEL_CLIENT_ID;
 const NYCKEL_CLIENT_SECRET = process.env.NYCKEL_CLIENT_SECRET;
 const NYCKEL_FUNCTION_ID = process.env.NYCKEL_FUNCTION_ID;
 
-const NYCKEL_TOKEN_URL = 'https://www.nyckel.com/connect/token';
+const NYCKEL_TOKEN_URL =
+  'https://www.nyckel.com/connect/token';
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
@@ -407,6 +55,38 @@ const wheatStageIndexes = {
 };
 
 // ======================================================
+// HELPERS
+// ======================================================
+
+const getToday = () =>
+  new Date().toISOString().split('T')[0];
+
+const getPlantQuery = (id) => {
+  if (mongoose.isValidObjectId(id)) {
+    return {
+      $or: [
+        { customId: id },
+        { _id: id },
+      ],
+    };
+  }
+
+  return { customId: id };
+};
+
+const generateCustomId = (cropType) => {
+  const prefix = String(cropType)
+    .slice(0, 3)
+    .toUpperCase();
+
+  const suffix = randomBytes(3)
+    .toString('hex')
+    .toUpperCase();
+
+  return `PLT-${prefix}-${suffix}`;
+};
+
+// ======================================================
 // GET NYCKEL ACCESS TOKEN
 // ======================================================
 
@@ -415,8 +95,14 @@ async function getNyckelToken() {
     return cachedToken;
   }
 
-  if (!NYCKEL_CLIENT_ID || !NYCKEL_CLIENT_SECRET || !NYCKEL_FUNCTION_ID) {
-    throw new Error('Nyckel environment variables are missing');
+  if (
+    !NYCKEL_CLIENT_ID ||
+    !NYCKEL_CLIENT_SECRET ||
+    !NYCKEL_FUNCTION_ID
+  ) {
+    throw new Error(
+      'Nyckel environment variables are missing'
+    );
   }
 
   const body = new URLSearchParams({
@@ -427,9 +113,11 @@ async function getNyckelToken() {
 
   const response = await fetch(NYCKEL_TOKEN_URL, {
     method: 'POST',
+
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
+
     body,
   });
 
@@ -437,36 +125,43 @@ async function getNyckelToken() {
 
   if (!response.ok || !data.access_token) {
     throw new Error(
-      data.error_description || 'Unable to authenticate with Nyckel'
+      data.error_description ||
+      'Unable to authenticate with Nyckel'
     );
   }
 
   cachedToken = data.access_token;
 
   const expiresIn = Number(data.expires_in) || 3600;
-  tokenExpiresAt = Date.now() + Math.max(expiresIn - 60, 0) * 1000;
+
+  tokenExpiresAt =
+    Date.now() + Math.max(expiresIn - 60, 0) * 1000;
 
   return cachedToken;
 }
 
 // ======================================================
-// PREDICT WHEAT GROWTH STAGE USING NYCKEL
+// PREDICT WHEAT STAGE USING NYCKEL
 // ======================================================
 
 async function predictWheatStage(imageBuffer, mimetype) {
   const token = await getNyckelToken();
 
   const base64Image = imageBuffer.toString('base64');
-  const imageData = `data:${mimetype};base64,${base64Image}`;
+
+  const imageData =
+    `data:${mimetype};base64,${base64Image}`;
 
   const response = await fetch(
     `https://www.nyckel.com/v1/functions/${NYCKEL_FUNCTION_ID}/invoke?capture=false`,
     {
       method: 'POST',
+
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
+
       body: JSON.stringify({
         data: imageData,
       }),
@@ -477,7 +172,9 @@ async function predictWheatStage(imageBuffer, mimetype) {
 
   if (!response.ok) {
     throw new Error(
-      result.message || result.error || 'Nyckel image prediction failed'
+      result.message ||
+      result.error ||
+      'Nyckel image prediction failed'
     );
   }
 
@@ -485,13 +182,19 @@ async function predictWheatStage(imageBuffer, mimetype) {
 }
 
 // ======================================================
+// GET ALL PLANTS
 // GET /api/plants
-// LIST PLANTS WITH FILTERS
 // ======================================================
 
 router.get('/', async (req, res) => {
   try {
-    const { cropType, stage, health, risk, search } = req.query;
+    const {
+      cropType,
+      stage,
+      health,
+      risk,
+      search,
+    } = req.query;
 
     const query = {};
 
@@ -513,69 +216,79 @@ router.get('/', async (req, res) => {
 
     if (search) {
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { customId: { $regex: search, $options: 'i' } },
-        { location: { $regex: search, $options: 'i' } },
+        {
+          name: {
+            $regex: search,
+            $options: 'i',
+          },
+        },
+        {
+          customId: {
+            $regex: search,
+            $options: 'i',
+          },
+        },
+        {
+          location: {
+            $regex: search,
+            $options: 'i',
+          },
+        },
       ];
     }
 
-    const plants = await Plant.find(query).sort({ updatedAt: -1 });
+    const plants = await Plant.find(query)
+      .sort({ updatedAt: -1 });
 
-    res.json(plants);
+    return res.json(plants);
+
   } catch (error) {
     console.error('Error fetching plants:', error);
 
-    res.status(500).json({
+    return res.status(500).json({
+      success: false,
       message: 'Error retrieving plant records',
     });
   }
 });
 
 // ======================================================
+// NYCKEL WHEAT PREDICTION
 // POST /api/plants/:id/predict-growth-stage
-// NYCKEL WHEAT GROWTH-STAGE PREDICTION
 // ======================================================
 
 router.post(
   '/:id/predict-growth-stage',
   upload.single('image'),
+
   async (req, res) => {
     try {
-      // Check uploaded image
       if (!req.file) {
         return res.status(400).json({
-          message: 'Please upload a Wheat plant image using the image field',
+          success: false,
+          message: 'Please upload a Wheat plant image.',
         });
       }
 
-      // Find plant using MongoDB ID or custom ID
-      const plantQuery = mongoose.isValidObjectId(req.params.id)
-        ? {
-            $or: [
-              { customId: req.params.id },
-              { _id: req.params.id },
-            ],
-          }
-        : {
-            customId: req.params.id,
-          };
-
-      const plant = await Plant.findOne(plantQuery);
+      const plant = await Plant.findOne(
+        getPlantQuery(req.params.id)
+      );
 
       if (!plant) {
         return res.status(404).json({
+          success: false,
           message: 'Plant not found',
         });
       }
 
-      // Only Wheat is supported by this Nyckel classifier
       if (plant.cropType !== 'Wheat') {
         return res.status(400).json({
-          message: 'Nyckel growth-stage prediction is currently available only for Wheat plants',
+          success: false,
+          message:
+            'Nyckel prediction is available only for Wheat.',
         });
       }
 
-      // Call Nyckel classifier
       const prediction = await predictWheatStage(
         req.file.buffer,
         req.file.mimetype
@@ -583,7 +296,6 @@ router.post(
 
       const predictedStage = prediction.labelName;
 
-      // Validate predicted label
       if (
         !Object.prototype.hasOwnProperty.call(
           wheatStageIndexes,
@@ -591,36 +303,43 @@ router.post(
         )
       ) {
         return res.status(502).json({
-          message: 'Nyckel returned an unknown growth-stage label',
+          success: false,
+          message: 'Nyckel returned an unknown growth stage.',
           receivedLabel: predictedStage,
         });
       }
 
-      // Validate confidence
       let confidence = Number(prediction.confidence);
 
       if (!Number.isFinite(confidence)) {
         return res.status(502).json({
-          message: 'Nyckel did not return a valid confidence score',
+          success: false,
+          message: 'Invalid confidence returned by Nyckel.',
         });
       }
 
-      // Convert decimal confidence into percentage
       if (confidence <= 1) {
         confidence *= 100;
       }
 
-      confidence = Math.min(100, Math.max(0, confidence));
+      confidence = Math.min(
+        100,
+        Math.max(0, confidence)
+      );
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getToday();
 
-      // Update plant record
       plant.currentStage = predictedStage;
-      plant.stageIndex = wheatStageIndexes[predictedStage];
-      plant.confidence = Number(confidence.toFixed(2));
+
+      plant.stageIndex =
+        wheatStageIndexes[predictedStage];
+
+      plant.confidence = Number(
+        confidence.toFixed(2)
+      );
+
       plant.lastAnalysedDate = today;
 
-      // Update plant history
       if (!Array.isArray(plant.history)) {
         plant.history = [];
       }
@@ -630,15 +349,18 @@ router.post(
         stage: predictedStage,
         healthScore: plant.healthScore || 90,
         imageUrl: plant.imageUrl || '',
-        note: `Growth stage predicted by Nyckel Wheat classifier with ${confidence.toFixed(2)}% confidence.`,
+        note:
+          `Nyckel Wheat prediction: ${predictedStage} ` +
+          `(${confidence.toFixed(2)}% confidence).`,
       });
 
       await plant.save();
 
-      // Return prediction and updated plant
-      res.json({
+      return res.json({
         success: true,
-        message: 'Wheat growth stage predicted and plant record updated successfully',
+
+        message:
+          'Wheat growth stage updated successfully.',
 
         prediction: {
           stage: predictedStage,
@@ -651,12 +373,13 @@ router.post(
 
     } catch (error) {
       console.error(
-        'Wheat growth-stage prediction error:',
+        'Wheat prediction error:',
         error
       );
 
-      res.status(500).json({
-        message: 'Unable to predict Wheat growth stage',
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to predict Wheat growth stage.',
         error: error.message,
       });
     }
@@ -664,45 +387,38 @@ router.post(
 );
 
 // ======================================================
-// GET /api/plants/:id
 // GET SINGLE PLANT
+// GET /api/plants/:id
 // ======================================================
 
 router.get('/:id', async (req, res) => {
   try {
-    const plantQuery = mongoose.isValidObjectId(req.params.id)
-      ? {
-          $or: [
-            { customId: req.params.id },
-            { _id: req.params.id },
-          ],
-        }
-      : {
-          customId: req.params.id,
-        };
-
-    const plant = await Plant.findOne(plantQuery);
+    const plant = await Plant.findOne(
+      getPlantQuery(req.params.id)
+    );
 
     if (!plant) {
       return res.status(404).json({
+        success: false,
         message: 'Plant not found',
       });
     }
 
-    res.json(plant);
+    return res.json(plant);
 
   } catch (error) {
     console.error('Error retrieving plant:', error);
 
-    res.status(500).json({
+    return res.status(500).json({
+      success: false,
       message: 'Error retrieving plant',
     });
   }
 });
 
 // ======================================================
+// CREATE NEW PLANT
 // POST /api/plants
-// REGISTER NEW PLANT
 // ======================================================
 
 router.post('/', async (req, res) => {
@@ -714,53 +430,144 @@ router.post('/', async (req, res) => {
       location,
       plantedDate,
       currentStage,
+      stageIndex,
+      confidence,
       imageUrl,
+      lastAnalysedDate,
+      history,
     } = req.body;
 
-    if (!name || !name.trim()) {
+    // ----------------------------------------------
+    // REQUIRED FIELD VALIDATION
+    // ----------------------------------------------
+
+    if (
+      !name ||
+      typeof name !== 'string' ||
+      !name.trim()
+    ) {
       return res.status(400).json({
-        message: 'Plant name is required',
+        success: false,
+        message: 'Plant name is required.',
       });
     }
 
-    const selectedCrop = cropType || 'Tomato';
+    if (!cropType) {
+      return res.status(400).json({
+        success: false,
+        message: 'Crop type is required.',
+      });
+    }
 
-    const validPlantDate = plantedDate || new Date().toISOString().split('T')[0];
+    if (!currentStage) {
+      return res.status(400).json({
+        success: false,
+        message: 'Growth stage is required.',
+      });
+    }
+
+    if (!imageUrl || typeof imageUrl !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Uploaded image URL is required.',
+      });
+    }
+
+    // ----------------------------------------------
+    // DATE VALIDATION
+    // ----------------------------------------------
+
+    const validPlantDate = plantedDate || getToday();
+
+    const parsedDate = new Date(validPlantDate);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid planted date.',
+      });
+    }
 
     const daysAfterPlanting = Math.max(
-      1,
+      0,
       Math.floor(
-        (new Date() - new Date(validPlantDate)) /
-          (1000 * 60 * 60 * 24)
+        (Date.now() - parsedDate.getTime()) /
+        (1000 * 60 * 60 * 24)
       )
     );
 
-    const customId = `PLT-${selectedCrop
-      .slice(0, 3)
-      .toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+    // ----------------------------------------------
+    // PREDICTION VALIDATION
+    // ----------------------------------------------
 
-    const initialStage = currentStage || 'Vegetative Growth';
+    const parsedStageIndex = Number(stageIndex);
+
+    const parsedConfidence = Number(confidence);
+
+    if (
+      !Number.isInteger(parsedStageIndex) ||
+      parsedStageIndex < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid growth stage index.',
+      });
+    }
+
+    if (
+      !Number.isFinite(parsedConfidence) ||
+      parsedConfidence < 0 ||
+      parsedConfidence > 100
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Confidence must be between 0 and 100.',
+      });
+    }
+
+    // ----------------------------------------------
+    // HISTORY
+    // ----------------------------------------------
+
+    const today = getToday();
+
+    const plantHistory =
+      Array.isArray(history) && history.length > 0
+        ? history
+        : [
+            {
+              date: today,
+              stage: currentStage,
+              healthScore: 90,
+              imageUrl,
+              note: 'Plant registered using AI growth-stage analysis.',
+            },
+          ];
+
+    // ----------------------------------------------
+    // CREATE MONGODB DOCUMENT
+    // ----------------------------------------------
 
     const newPlant = new Plant({
-      customId,
+      customId: generateCustomId(cropType),
 
       name: name.trim(),
 
-      cropType: selectedCrop,
+      cropType,
 
       variety: variety || 'Commercial Variety',
 
-      location: location || 'North Field Bed 1',
+      location: location || 'North Field',
 
       plantedDate: validPlantDate,
 
       daysAfterPlanting,
 
-      currentStage: initialStage,
+      currentStage,
 
-      stageIndex: selectedCrop === 'Wheat' ? 0 : 2,
+      stageIndex: parsedStageIndex,
 
-      confidence: 93.5,
+      confidence: parsedConfidence,
 
       healthStatus: 'Healthy',
 
@@ -768,138 +575,180 @@ router.post('/', async (req, res) => {
 
       riskLevel: 'Low',
 
-      lastAnalysedDate: new Date().toISOString().split('T')[0],
+      lastAnalysedDate:
+        lastAnalysedDate || today,
 
-      imageUrl: imageUrl || '',
+      imageUrl,
 
       soilMoisture: '30%',
 
       gddAccumulated: 400,
 
       estimatedNextMilestone: {
-        stage: selectedCrop === 'Wheat' ? 'Flowering' : 'Bud Formation',
-
-        estimatedDate: new Date(Date.now() + 10 * 86400000)
-          .toISOString()
-          .split('T')[0],
-
-        daysRemaining: 10,
-
-        confidence: 89,
+        stage: 'Not calculated',
+        estimatedDate: today,
+        daysRemaining: 0,
+        confidence: 0,
       },
 
-      history: [
-        {
-          date: new Date().toISOString().split('T')[0],
+      history: plantHistory,
 
-          stage: initialStage,
-
-          healthScore: 90,
-
-          imageUrl: imageUrl || '',
-
-          note: 'Initial plant record registered in farm system.',
-        },
-      ],
+      // Associate with logged-in user when auth middleware
+      // supplies req.user. No user ID is fabricated.
+      ...(req.user?._id && {
+        userId: req.user._id,
+      }),
     });
 
     await newPlant.save();
 
-    res.status(201).json(newPlant);
+    return res.status(201).json({
+      success: true,
+      message: 'Plant successfully registered.',
+      plant: newPlant,
+    });
 
   } catch (error) {
     console.error('Error creating plant:', error);
 
-    res.status(500).json({
-      message: 'Error registering plant',
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'Duplicate plant ID. Please try again.',
+      });
+    }
+
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Plant validation failed.',
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Error registering plant.',
       error: error.message,
     });
   }
 });
 
 // ======================================================
-// PUT /api/plants/:id
 // UPDATE PLANT
+// PUT /api/plants/:id
 // ======================================================
 
 router.put('/:id', async (req, res) => {
   try {
-    const plantQuery = mongoose.isValidObjectId(req.params.id)
-      ? {
-          $or: [
-            { customId: req.params.id },
-            { _id: req.params.id },
-          ],
-        }
-      : {
-          customId: req.params.id,
-        };
+    const allowedFields = [
+      'name',
+      'cropType',
+      'variety',
+      'location',
+      'plantedDate',
+      'daysAfterPlanting',
+      'currentStage',
+      'stageIndex',
+      'confidence',
+      'healthStatus',
+      'healthScore',
+      'riskLevel',
+      'lastAnalysedDate',
+      'imageUrl',
+      'soilMoisture',
+      'gddAccumulated',
+      'gddTargetFlowering',
+      'gddTargetMaturity',
+      'estimatedNextMilestone',
+      'observations',
+      'history',
+    ];
 
-    const updated = await Plant.findOneAndUpdate(
-      plantQuery,
-      { $set: req.body },
-      { new: true, runValidators: true }
-    );
+    const updateData = {};
 
-    if (!updated) {
-      return res.status(404).json({
-        message: 'Plant not found',
+    for (const field of allowedFields) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          req.body,
+          field
+        )
+      ) {
+        updateData[field] = req.body[field];
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid update fields provided.',
       });
     }
 
-    res.json(updated);
+    const updatedPlant = await Plant.findOneAndUpdate(
+      getPlantQuery(req.params.id),
+
+      { $set: updateData },
+
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!updatedPlant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Plant not found.',
+      });
+    }
+
+    return res.json(updatedPlant);
 
   } catch (error) {
     console.error('Error updating plant:', error);
 
-    res.status(500).json({
-      message: 'Error updating plant',
+    return res.status(
+      error.name === 'ValidationError' ? 400 : 500
+    ).json({
+      success: false,
+      message: 'Error updating plant.',
+      error: error.message,
     });
   }
 });
 
 // ======================================================
-// DELETE /api/plants/:id
 // DELETE PLANT
+// DELETE /api/plants/:id
 // ======================================================
 
 router.delete('/:id', async (req, res) => {
   try {
-    const plantQuery = mongoose.isValidObjectId(req.params.id)
-      ? {
-          $or: [
-            { customId: req.params.id },
-            { _id: req.params.id },
-          ],
-        }
-      : {
-          customId: req.params.id,
-        };
+    const deletedPlant = await Plant.findOneAndDelete(
+      getPlantQuery(req.params.id)
+    );
 
-    const deleted = await Plant.findOneAndDelete(plantQuery);
-
-    if (!deleted) {
+    if (!deletedPlant) {
       return res.status(404).json({
-        message: 'Plant not found',
+        success: false,
+        message: 'Plant not found.',
       });
     }
 
-    res.json({
-      message: 'Plant record removed successfully',
+    return res.json({
+      success: true,
+      message: 'Plant deleted successfully.',
     });
 
   } catch (error) {
     console.error('Error deleting plant:', error);
 
-    res.status(500).json({
-      message: 'Error deleting plant',
+    return res.status(500).json({
+      success: false,
+      message: 'Error deleting plant.',
     });
   }
 });
 
-// ======================================================
-// EXPORT ROUTER
-// ======================================================
-
 export default router;
-

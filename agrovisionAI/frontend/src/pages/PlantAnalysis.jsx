@@ -1,24 +1,16 @@
 import React, { useState, useRef } from 'react';
-import { plantService } from '../services/plantService';
+
 import {
   UploadCloud,
   Camera,
   ScanEye,
   CheckCircle2,
   Sparkles,
-  ArrowRight,
   RefreshCw,
-  Sliders,
-  Calendar,
-  Layers,
-  FileDown,
-  Info,
-  Clock,
 } from 'lucide-react';
-import { predictionService } from '../services/predictionService';
-import { GROWTH_STAGES } from '../services/plantService';
-import { usePlant } from '../context/PlantContext';
 
+import { predictionService, GROWTH_STAGES } from '../services/plantService';
+import { usePlant } from '../context/PlantContext';
 import { IMAGES } from '../assets/images';
 
 export default function PlantAnalysis() {
@@ -41,7 +33,6 @@ export default function PlantAnalysis() {
     { label: 'Chilli (Vegetative Stage)', crop: 'Chilli', image: IMAGES.chilliVegetative },
     { label: 'Paddy (Grain Filling / Fruit)', crop: 'Paddy', image: IMAGES.paddyField },
     { label: 'Tomato Leaf (Blight Spot)', crop: 'Tomato', image: IMAGES.leafDisease },
-    { label: 'Wheat (Growth Stage)', crop: 'Wheat', image: IMAGES.paddyField },
   ];
 
  const handleFileChange = (e) => {
@@ -146,18 +137,73 @@ const handleAnalyze = async () => {
 };
 
 
-  const handleSaveToFarm = () => {
-    if (!result) return;
-    addPlant({
-      name: `${result.cropType} Field Specimen`,
-      cropType: result.cropType,
-      location: result.location,
-      plantedDate: new Date(Date.now() - 48 * 86400000).toISOString().split('T')[0],
+const handleSaveToFarm = async () => {
+  if (!result || isSaved) return;
+
+  if (!result.imageUrl) {
+    alert('Image URL is missing. Please analyse the image again.');
+    return;
+  }
+
+  try {
+    const plantData = {
+      name: `${result.cropType || selectedCrop} Field Specimen`,
+
+      cropType: result.cropType || selectedCrop,
+
+      variety: 'Commercial Variety',
+
+      location: result.location || selectedLocation,
+
+      plantedDate: new Date(
+        Date.now() - 48 * 60 * 60 * 1000
+      ).toISOString().split('T')[0],
+
       currentStage: result.currentStage,
-      imageUrl: previewUrl,
-    });
+
+      // Backend prediction uses zero-based stage indexes.
+      stageIndex: Number(result.stageIndex),
+
+      confidence: Number(result.confidence),
+
+      // IMPORTANT: Use backend URL, NOT previewUrl.
+      imageUrl: result.imageUrl,
+
+      lastAnalysedDate: new Date()
+        .toISOString()
+        .split('T')[0],
+
+      history: [
+        {
+          date: new Date().toISOString().split('T')[0],
+          stage: result.currentStage,
+          healthScore: 90,
+          imageUrl: result.imageUrl,
+          note: `AI growth-stage prediction with ${result.confidence}% confidence.`,
+        },
+      ],
+    };
+
+    const savedPlant = await addPlant(plantData);
+
+    if (!savedPlant) {
+      throw new Error('Plant could not be saved.');
+    }
+
     setIsSaved(true);
-  };
+
+    alert('Plant successfully saved to My Plants!');
+
+  } catch (error) {
+    console.error('Save plant error:', error);
+
+    alert(
+      error.response?.data?.message ||
+      error.message ||
+      'Unable to save plant. Please try again.'
+    );
+  }
+};
 
   return (
     <div className="space-y-6">
@@ -396,7 +442,7 @@ const handleAnalyze = async () => {
 </span>
 
 <span className="text-emerald-700 font-mono text-[11px]">
-  Stage {result.stageIndex} of {result.stageProgression.length}
+  Stage {Number(result.stageIndex) + 1} of {result.stageProgression.length}
 </span>
                   </div>
 
@@ -432,32 +478,39 @@ const handleAnalyze = async () => {
 
                 {/* Milestone Forecast Box */}
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <span className="text-slate-500 text-[11px] block">Next Developmental Milestone</span>
-                    <strong className="text-slate-900 text-sm font-display block mt-0.5">
-                      {result.nextStage}
-                    </strong>
-                   <strong className="text-slate-900 text-sm font-mono block mt-0.5">
-  {result.accumulatedGDD != null && result.targetGDDToNext != null
-    ? `${result.accumulatedGDD} / ${result.targetGDDToNext} °C-days`
-    : 'Not available'}
-</strong>
 
-<span className="text-slate-500 text-[11px]">
-  GDD requires field temperature and crop-specific data.
-</span>
-                  </div>
+  <div>
+    <span className="text-slate-500 text-[11px] block">
+      Next Developmental Milestone
+    </span>
 
-                  <div>
-                    <span className="text-slate-500 text-[11px] block">Thermal Accumulation (GDD)</span>
-                    <strong className="text-slate-900 text-sm font-mono block mt-0.5">
-                      {result.accumulatedGDD} / {result.targetGDDToNext} °C-days
-                    </strong>
-                    <span className="text-slate-500 text-[11px]">
-                      Crop Base Temp: 10°C (Standard Growing Parameters)
-                    </span>
-                  </div>
-                </div>
+    <strong className="text-slate-900 text-sm font-display block mt-1">
+      {result.nextStage || 'Not available'}
+    </strong>
+
+    <span className="text-slate-500 text-[11px]">
+      Estimated next growth stage based on crop progression.
+    </span>
+  </div>
+
+  <div>
+    <span className="text-slate-500 text-[11px] block">
+      Thermal Accumulation (GDD)
+    </span>
+
+    <strong className="text-slate-900 text-sm font-mono block mt-1">
+      {result.accumulatedGDD != null &&
+       result.targetGDDToNext != null
+        ? `${result.accumulatedGDD} / ${result.targetGDDToNext} °C-days`
+        : 'Not calculated'}
+    </strong>
+
+    <span className="text-slate-500 text-[11px]">
+      Requires field temperature data and crop-specific parameters.
+    </span>
+  </div>
+
+</div>
 
                 {/* Visual Observations and Deep Learning Features */}
                 <div className="space-y-2">
