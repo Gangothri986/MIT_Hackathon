@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { plantService } from '../services/plantService';
 import {
   Sprout,
   Plus,
@@ -18,7 +19,7 @@ import { GROWTH_STAGES } from '../services/plantService';
 import { IMAGES } from '../assets/images';
 
 export default function MyPlants() {
-  const { plants, addPlant, setSelectedPlant } = usePlant();
+  const { plants, addPlant, setSelectedPlant,updateWheatPrediction } = usePlant();
   const getPlantImage = (plant) => {
   // Replace previously saved incorrect image paths
   if (
@@ -38,6 +39,9 @@ export default function MyPlants() {
 
     case 'Paddy':
       return IMAGES.paddyField;
+      
+      case 'Wheat':
+  return IMAGES.paddyField;
 
     default:
       return IMAGES.hero;
@@ -52,6 +56,9 @@ export default function MyPlants() {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [inspectPlant, setInspectPlant] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
+const [predicting, setPredicting] = useState(false);
+const [predictionError, setPredictionError] = useState('');
 
   // New Plant Form State
   const [newPlantData, setNewPlantData] = useState({
@@ -79,30 +86,78 @@ export default function MyPlants() {
     return true;
   });
 
-  const handleCreatePlant = (e) => {
-    e.preventDefault();
-    if (!newPlantData.name.trim()) return;
+ const handleCreatePlant = async (e) => {
+  e.preventDefault();
 
-    let defaultImg = IMAGES.tomatoFlowering;
-    if (newPlantData.cropType === 'Chilli') defaultImg = IMAGES.chilliVegetative;
-    if (newPlantData.cropType === 'Paddy') defaultImg = IMAGES.paddyField;
+  if (!newPlantData.name.trim()) return;
 
-    addPlant({
+  let defaultImg = IMAGES.tomatoFlowering;
+
+  if (newPlantData.cropType === 'Chilli') {
+    defaultImg = IMAGES.chilliFlowering;
+  } else if (newPlantData.cropType === 'Paddy') {
+    defaultImg = IMAGES.paddyField;
+  } else if (newPlantData.cropType === 'Wheat') {
+    defaultImg = IMAGES.paddyField;
+  }
+
+  try {
+    await addPlant({
       ...newPlantData,
       imageUrl: defaultImg,
     });
 
     setIsAddModalOpen(false);
+
     setNewPlantData({
       name: '',
       cropType: 'Tomato',
-      variety: 'Arka Rakshak',
-      location: 'Plot A - Polyhouse 2, Mysore AgroZone',
-      plantedDate: new Date().toISOString().split('T')[0],
+      location: '',
+      plantingDate: '',
       currentStage: 'Vegetative Growth',
     });
-  };
+  } catch (error) {
+    console.error('Plant creation failed:', error);
+    alert('Could not save plant. Please check your backend.');
+  }
+};
+const handleWheatPrediction = async () => {
+  if (!selectedImage || !inspectPlant) {
+    setPredictionError('Please select a Wheat image first.');
+    return;
+  }
 
+  const plantId = inspectPlant._id || inspectPlant.customId || inspectPlant.id;
+
+  try {
+    setPredicting(true);
+    setPredictionError('');
+
+    const result = await plantService.predictWheatStage(
+      plantId,
+      selectedImage
+    );
+
+    updateWheatPrediction(plantId, result.prediction);
+
+    setInspectPlant((prev) => ({
+      ...prev,
+      ...result.plant,
+      currentStage: result.prediction.stage,
+      stageIndex: result.prediction.stageIndex,
+      confidence: result.prediction.confidence,
+    }));
+
+    setSelectedImage(null);
+  } catch (error) {
+    console.error('Wheat prediction error:', error);
+    setPredictionError(
+      error.response?.data?.message || 'Prediction failed. Please check the backend.'
+    );
+  } finally {
+    setPredicting(false);
+  }
+};
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -149,10 +204,11 @@ export default function MyPlants() {
             onChange={(e) => setCropFilter(e.target.value)}
             className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-600 font-medium"
           >
-            <option value="All">All Crops</option>
             <option value="Tomato">Tomato</option>
-            <option value="Chilli">Chilli</option>
-            <option value="Paddy">Paddy</option>
+<option value="Chilli">Chilli</option>
+<option value="Paddy">Paddy</option>
+<option value="Wheat">Wheat</option>
+<option value="Other">Other</option>
           </select>
 
           {/* Stage Filter */}
@@ -162,11 +218,15 @@ export default function MyPlants() {
             className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-600 font-medium"
           >
             <option value="All">All Growth Stages</option>
-            {GROWTH_STAGES.map((s) => (
-              <option key={s.id} value={s.name}>
-                {s.name}
-              </option>
-            ))}
+           {[
+  ...GROWTH_STAGES,
+  { id: 7, name: 'Fruiting' },
+  { id: 8, name: 'Mature' },
+].map((s) => (
+  <option key={s.id} value={s.name}>
+    {s.name}
+  </option>
+))}
           </select>
 
           {/* Health Filter */}
@@ -264,13 +324,22 @@ export default function MyPlants() {
                 {/* Growth Stage & Progress */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1.5 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500 font-medium">Stage {plant.stageIndex} of 6</span>
+                    <span className="text-slate-500 font-medium">
+  Stage {plant.cropType === 'Wheat' ? plant.stageIndex + 1 : plant.stageIndex} of {plant.cropType === 'Wheat' ? 4 : 6}
+</span>
                     <strong className="text-emerald-800">{plant.currentStage}</strong>
                   </div>
                   <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-emerald-600 rounded-full"
-                      style={{ width: `${(plant.stageIndex / 6) * 100}%` }}
+                      style={{
+  width: `${
+    ((plant.cropType === 'Wheat'
+      ? plant.stageIndex + 1
+      : plant.stageIndex) /
+      (plant.cropType === 'Wheat' ? 4 : 6)) * 100
+  }%`,
+}}
                     />
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
@@ -346,7 +415,45 @@ export default function MyPlants() {
                   <p><strong>Health Score:</strong> <span className="font-bold text-emerald-700">{inspectPlant.healthScore}/100</span></p>
                 </div>
               </div>
+                  {inspectPlant.cropType === 'Wheat' && (
+  <div className="p-4 rounded-xl bg-slate-50 border border-emerald-200 space-y-3">
+    <h4 className="font-bold text-emerald-900">
+      Wheat Growth Stage Prediction
+    </h4>
 
+    <p className="text-slate-600">
+      Upload a Wheat plant image to predict its current growth stage using Nyckel AI.
+    </p>
+
+    <input
+      type="file"
+      accept="image/*"
+      onChange={(e) => {
+        setSelectedImage(e.target.files?.[0] || null);
+        setPredictionError('');
+      }}
+      className="w-full text-xs"
+    />
+
+    {selectedImage && (
+      <p className="text-emerald-700">
+        Selected: {selectedImage.name}
+      </p>
+    )}
+
+    <button
+      onClick={handleWheatPrediction}
+      disabled={!selectedImage || predicting}
+      className="px-4 py-2 bg-[#123B2A] hover:bg-[#16A36A] disabled:opacity-50 text-white font-semibold rounded-xl"
+    >
+      {predicting ? 'Predicting...' : 'Predict Growth Stage'}
+    </button>
+
+    {predictionError && (
+      <p className="text-red-600">{predictionError}</p>
+    )}
+  </div>
+)}
               <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1">
                 <span className="font-bold text-emerald-950">Next Projected Milestone:</span>
                 <p className="text-emerald-900">
@@ -414,6 +521,7 @@ export default function MyPlants() {
                     <option value="Tomato">Tomato</option>
                     <option value="Chilli">Chilli</option>
                     <option value="Paddy">Paddy</option>
+                    <option value="Wheat">Wheat</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>

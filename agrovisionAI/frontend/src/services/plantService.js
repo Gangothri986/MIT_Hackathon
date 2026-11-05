@@ -319,4 +319,15 @@ export const plantService = {
     localStorage.setItem('agrovision_plants', JSON.stringify(updated));
     return newPlant;
   },
+    async predictWheatStage(plantId, imageFile) {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+
+    const response = await apiClient.post(
+      `/plants/${plantId}/predict-growth-stage`,
+      formData
+    );
+
+    return response.data;
+  },
 };

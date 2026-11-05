@@ -141,49 +141,28 @@ export function PlantProvider({ children }) {
     localStorage.setItem('agrovision_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
-  const addPlant = (newPlantData) => {
-    const plant = {
-      id: `PLT-${(newPlantData.cropType || 'CRP').slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
-      name: newPlantData.name,
-      cropType: newPlantData.cropType,
-      variety: newPlantData.variety || 'Local High-Yield Hybrid',
-      location: newPlantData.location,
-      plantedDate: newPlantData.plantedDate,
-      daysAfterPlanting: Math.max(1, Math.floor((new Date() - new Date(newPlantData.plantedDate)) / (1000 * 60 * 60 * 24))),
-      currentStage: newPlantData.currentStage || 'Vegetative Growth',
-      stageIndex: 2,
-      confidence: 93.5,
-      healthStatus: 'Healthy',
-      healthScore: 92,
-      riskLevel: 'Low',
-      lastAnalysedDate: new Date().toISOString().split('T')[0],
-      imageUrl: newPlantData.imageUrl || IMAGES.tomatoFlowering,
-      soilMoisture: '30%',
-      gddAccumulated: 380,
-      gddTargetFlowering: 650,
-      gddTargetMaturity: 1400,
-      estimatedNextMilestone: {
-        stage: 'Bud Formation',
-        estimatedDate: new Date(Date.now() + 10 * 86400000).toISOString().split('T')[0],
-        daysRemaining: 10,
-        confidence: 89.0,
-      },
-      observations: ['Initial registration record created', 'Visual baseline established'],
-      history: [
-        {
-          date: new Date().toISOString().split('T')[0],
-          stage: newPlantData.currentStage || 'Vegetative Growth',
-          healthScore: 92,
-          imageUrl: newPlantData.imageUrl || IMAGES.tomatoFlowering,
-          note: 'Registered into AgroVision AI platform.',
-        },
-      ],
+  const addPlant = async (newPlantData) => {
+  try {
+    const plant = await plantService.createPlant(newPlantData);
+
+    // Ensure the plant was actually saved in MongoDB
+    if (!plant?._id) {
+      throw new Error('Plant was not saved to MongoDB. Missing MongoDB ID.');
+    }
+
+    const savedPlant = {
+      ...plant,
+      id: plant.id || plant.customId || plant._id,
     };
 
-    setPlants((prev) => [plant, ...prev]);
-    return plant;
-  };
+    setPlants((prev) => [savedPlant, ...prev]);
 
+    return savedPlant;
+  } catch (error) {
+    console.error('Error creating plant:', error);
+    throw error;
+  }
+};
   const completeRecommendation = (id) => {
     setRecommendations((prev) =>
       prev.map((rec) => (rec.id === id ? { ...rec, completed: !rec.completed } : rec))
@@ -232,7 +211,32 @@ export function PlantProvider({ children }) {
       })
     );
   };
-
+const updateWheatPrediction = (plantId, prediction) => {
+  setPlants((prev) =>
+    prev.map((p) => {
+      if (p.id === plantId || p._id === plantId || p.customId === plantId) {
+        return {
+          ...p,
+          currentStage: prediction.stage,
+          stageIndex: prediction.stageIndex,
+          confidence: prediction.confidence,
+          lastAnalysedDate: new Date().toISOString().split('T')[0],
+          history: [
+            ...(p.history || []),
+            {
+              date: new Date().toISOString().split('T')[0],
+              stage: prediction.stage,
+              healthScore: p.healthScore || 90,
+              imageUrl: p.imageUrl,
+              note: `Nyckel Wheat growth-stage prediction: ${prediction.stage} (${prediction.confidence}% confidence).`,
+            },
+          ],
+        };
+      }
+      return p;
+    })
+  );
+};
   return (
     <PlantContext.Provider
       value={{
@@ -241,6 +245,7 @@ export function PlantProvider({ children }) {
         setSelectedPlant,
         addPlant,
         updatePlantAnalysis,
+        updateWheatPrediction,
         recommendations,
         completeRecommendation,
         notifications,

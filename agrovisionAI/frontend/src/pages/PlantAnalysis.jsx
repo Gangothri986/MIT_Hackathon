@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { plantService } from '../services/plantService';
 import {
   UploadCloud,
   Camera,
@@ -17,6 +18,7 @@ import {
 import { predictionService } from '../services/predictionService';
 import { GROWTH_STAGES } from '../services/plantService';
 import { usePlant } from '../context/PlantContext';
+
 import { IMAGES } from '../assets/images';
 
 export default function PlantAnalysis() {
@@ -31,6 +33,7 @@ export default function PlantAnalysis() {
   const [result, setResult] = useState(null);
   const [simulatedCamera, setSimulatedCamera] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
 
   // Fast sample presets for judges to test with 1 click
   const SAMPLE_PRESETS = [
@@ -38,50 +41,110 @@ export default function PlantAnalysis() {
     { label: 'Chilli (Vegetative Stage)', crop: 'Chilli', image: IMAGES.chilliVegetative },
     { label: 'Paddy (Grain Filling / Fruit)', crop: 'Paddy', image: IMAGES.paddyField },
     { label: 'Tomato Leaf (Blight Spot)', crop: 'Tomato', image: IMAGES.leafDisease },
+    { label: 'Wheat (Growth Stage)', crop: 'Wheat', image: IMAGES.paddyField },
   ];
 
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setPreviewUrl(url);
-      setResult(null);
-      setIsSaved(false);
-    }
-  };
+ const handleFileChange = (e) => {
+  const file = e.target.files?.[0];
 
-  const handleSelectPreset = (preset) => {
+  if (file) {
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image.');
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+
+    setPreviewUrl(url);
+    setSelectedFile(file);
+    setResult(null);
+    setIsSaved(false);
+  }
+
+  // Allows selecting the same file again
+  e.target.value = '';
+};
+
+const handleSelectPreset = async (preset) => {
+  try {
+    // Convert the preset image into a real File.
+    // Gemini needs the image bytes, not just the preview URL.
+    const imageResponse = await fetch(preset.image);
+
+    if (!imageResponse.ok) {
+      throw new Error('Could not load the sample image.');
+    }
+
+    const blob = await imageResponse.blob();
+
+    const extension = blob.type.split('/')[1] || 'jpg';
+
+    const imageFile = new File(
+      [blob],
+      `${preset.crop.toLowerCase()}-sample.${extension}`,
+      { type: blob.type || 'image/jpeg' }
+    );
+
     setSelectedCrop(preset.crop);
+    setSelectedFile(imageFile);
     setPreviewUrl(preset.image);
     setResult(null);
     setIsSaved(false);
-  };
+  } catch (error) {
+    console.error('Preset loading error:', error);
+    alert('Could not load this sample image. Please upload an image manually.');
+  }
+};
+  
+const handleAnalyze = async () => {
+  if (!selectedFile) {
+    alert('Please upload an image or select a sample preset first.');
+    return;
+  }
 
-  const handleAnalyze = async () => {
-    setAnalyzing(true);
-    setResult(null);
-    setIsSaved(false);
+  setAnalyzing(true);
+  setResult(null);
+  setIsSaved(false);
+  setAnalysisStep(1);
 
-    // Multi-step progressive animation
-    setAnalysisStep(1); // Normalizing image tensor
-    await new Promise((r) => setTimeout(r, 400));
-    setAnalysisStep(2); // Deep CNN Feature Extraction (ResNet-50 / EfficientNet)
-    await new Promise((r) => setTimeout(r, 500));
-    setAnalysisStep(3); // Phenological classification & GDD regression
-    await new Promise((r) => setTimeout(r, 450));
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
-    try {
-      const response = await predictionService.analyzeGrowthStage({
-        imageUrl: previewUrl,
-        cropType: selectedCrop,
-        location: selectedLocation,
-      });
-      setResult(response);
-    } finally {
-      setAnalyzing(false);
-      setAnalysisStep(0);
+    setAnalysisStep(2);
+
+    const response = await predictionService.analyzeGrowthStage({
+      imageFile: selectedFile,
+      cropType: selectedCrop,
+      location: selectedLocation,
+    });
+
+    setAnalysisStep(3);
+
+    if (!response || response.success === false) {
+      throw new Error(
+        response?.message || 'Gemini could not analyse this image.'
+      );
     }
-  };
+
+    if (!response.currentStage || !response.stageProgression?.length) {
+      throw new Error('The API returned an incomplete growth-stage prediction.');
+    }
+
+    setResult(response);
+  } catch (error) {
+    console.error('Plant analysis error:', error);
+
+    alert(
+      error.response?.data?.message ||
+      error.message ||
+      'Plant analysis failed. Please check the backend and Gemini API key.'
+    );
+  } finally {
+    setAnalyzing(false);
+    setAnalysisStep(0);
+  }
+};
+
 
   const handleSaveToFarm = () => {
     if (!result) return;
@@ -222,10 +285,13 @@ export default function PlantAnalysis() {
                   onChange={(e) => setSelectedCrop(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-600 font-medium"
                 >
+                
+
                   <option value="Tomato">Tomato (Solanum lycopersicum)</option>
-                  <option value="Chilli">Chilli (Capsicum annuum)</option>
-                  <option value="Paddy">Paddy / Rice (Oryza sativa)</option>
-                  <option value="Other">Other / Solanaceae Cultivar</option>
+<option value="Chilli">Chilli (Capsicum annuum)</option>
+<option value="Paddy">Paddy / Rice (Oryza sativa)</option>
+<option value="Wheat">Wheat</option>
+<option value="Other">Other / Solanaceae Cultivar</option>
                 </select>
               </div>
 
@@ -312,17 +378,29 @@ export default function PlantAnalysis() {
                     <span className="text-[11px] text-slate-500 font-medium">Model Confidence</span>
                   </div>
                 </div>
+                {result.isReliable === false && (
+  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+    <strong>Low-confidence prediction</strong>
+    <p className="mt-1">
+      This is an approximate AI estimate. Please verify the growth stage
+      visually or upload a clearer full-plant image.
+    </p>
+  </div>
+)}
 
                 {/* Growth Stage Horizontal Timeline: All 6 stages */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-800">Phenological Progression (6 Stages)</span>
-                    <span className="text-emerald-700 font-mono text-[11px]">
-                      Stage {result.stageIndex} of 6
-                    </span>
+                   <span className="font-bold text-slate-800">
+  {result.cropType} Growth Progression
+</span>
+
+<span className="text-emerald-700 font-mono text-[11px]">
+  Stage {result.stageIndex} of {result.stageProgression.length}
+</span>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {result.stageProgression.map((stage) => (
                       <div
                         key={stage.id}
@@ -359,9 +437,15 @@ export default function PlantAnalysis() {
                     <strong className="text-slate-900 text-sm font-display block mt-0.5">
                       {result.nextStage}
                     </strong>
-                    <span className="text-emerald-700 font-mono text-[11px]">
-                      Estimated in ~{result.daysToNextMilestone} days ({result.estimatedNextMilestoneDate})
-                    </span>
+                   <strong className="text-slate-900 text-sm font-mono block mt-0.5">
+  {result.accumulatedGDD != null && result.targetGDDToNext != null
+    ? `${result.accumulatedGDD} / ${result.targetGDDToNext} °C-days`
+    : 'Not available'}
+</strong>
+
+<span className="text-slate-500 text-[11px]">
+  GDD requires field temperature and crop-specific data.
+</span>
                   </div>
 
                   <div>
@@ -381,7 +465,7 @@ export default function PlantAnalysis() {
                     Detected Visual Features & Biophysical Attributes
                   </h4>
                   <ul className="space-y-1.5 text-xs text-slate-700">
-                    {result.visualCharacteristics.map((obs, idx) => (
+                    {(result.visualCharacteristics || []).map((obs, idx) => (
                       <li key={idx} className="flex items-start gap-2 bg-emerald-50/40 p-2 rounded-lg">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                         <span>{obs}</span>
@@ -396,7 +480,7 @@ export default function PlantAnalysis() {
                     Agronomic Next Actions for {result.currentStage}
                   </h4>
                   <ul className="space-y-1.5 text-xs text-slate-700">
-                    {result.recommendations.map((rec, idx) => (
+                    {(result.recommendations || []).map((rec, idx) => (
                       <li key={idx} className="flex items-start gap-2">
                         <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                         <span>{rec}</span>
