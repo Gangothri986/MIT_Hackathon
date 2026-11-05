@@ -4,11 +4,31 @@ import express from 'express';
 const router = express.Router();
 
 // Mysuru coordinates (can be changed using .env)
-const FARM_LATITUDE = process.env.FARM_LATITUDE || 12.2958;
-const FARM_LONGITUDE = process.env.FARM_LONGITUDE || 76.6394;
+const FARM_LATITUDE = Number(process.env.FARM_LATITUDE || 12.2958);
+const FARM_LONGITUDE = Number(process.env.FARM_LONGITUDE || 76.6394);
 
 const OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast';
+function getCoordinates(req, res) {
+  const latitude = Number(req.query.latitude ?? FARM_LATITUDE);
+  const longitude = Number(req.query.longitude ?? FARM_LONGITUDE);
 
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    res.status(400).json({
+      message: 'Invalid latitude or longitude',
+    });
+
+    return null;
+  }
+
+  return { latitude, longitude };
+}
 const weatherDescriptions = {
   0: 'Clear Sky',
   1: 'Mainly Clear',
@@ -57,10 +77,10 @@ function getCurrentHourIndex(times) {
   return closestIndex;
 }
 
-async function fetchOpenMeteo() {
+async function fetchOpenMeteo(latitude, longitude) {
   const params = new URLSearchParams({
-    latitude: FARM_LATITUDE,
-    longitude: FARM_LONGITUDE,
+    latitude: String(latitude),
+longitude: String(longitude),
     timezone: 'auto',
     forecast_days: '7',
 
@@ -94,19 +114,54 @@ async function fetchOpenMeteo() {
     ].join(','),
   });
 
-  const response = await fetch(`${OPEN_METEO_URL}?${params}`);
+  const url = `${OPEN_METEO_URL}?${params}`;
 
-  if (!response.ok) {
-    throw new Error(`Open-Meteo API error: ${response.status}`);
+console.log('Open-Meteo request:', url);
+
+let response;
+
+for (let attempt = 0; attempt < 3; attempt++) {
+  response = await fetch(url);
+
+  if (response.ok) {
+    break;
   }
 
-  return response.json();
+  const errorBody = await response.text();
+
+  console.error(
+    `Open-Meteo attempt ${attempt + 1} failed:`,
+    response.status,
+    errorBody
+  );
+
+  if (
+    ![429, 500, 502, 503, 504].includes(response.status) ||
+    attempt === 2
+  ) {
+    throw new Error(
+      `Open-Meteo API error: ${response.status}`
+    );
+  }
+
+  await new Promise((resolve) =>
+    setTimeout(resolve, 1000 * (attempt + 1))
+  );
+}
+
+return response.json();
 }
 
 // GET /api/weather/current
 router.get('/current', async (req, res) => {
   try {
-    const data = await fetchOpenMeteo();
+   const coordinates = getCoordinates(req, res);
+if (!coordinates) return;
+
+const data = await fetchOpenMeteo(
+  coordinates.latitude,
+  coordinates.longitude
+);
 
     const current = data.current;
     const daily = data.daily;
@@ -115,7 +170,10 @@ router.get('/current', async (req, res) => {
     const hourIndex = getCurrentHourIndex(hourly.time);
 
     const currentWeather = {
-      location: 'Mysuru Agricultural Region',
+      location:
+  typeof req.query.location === 'string'
+    ? req.query.location
+    : 'Selected Farm Location',
 
       lastUpdated: current.time,
 
@@ -168,7 +226,13 @@ router.get('/current', async (req, res) => {
 // GET /api/weather/forecast
 router.get('/forecast', async (req, res) => {
   try {
-    const data = await fetchOpenMeteo();
+   const coordinates = getCoordinates(req, res);
+if (!coordinates) return;
+
+const data = await fetchOpenMeteo(
+  coordinates.latitude,
+  coordinates.longitude
+);
 
     const daily = data.daily;
 

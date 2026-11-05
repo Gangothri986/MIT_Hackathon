@@ -10,6 +10,7 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
+  MapPin,
   CalendarDays,
   Leaf,
   CloudRain,
@@ -132,29 +133,90 @@ const formatDate = (dateString) => {
         month: 'short',
       });
 };
+const FARM_LOCATIONS = [
+  {
+    name: 'Mysuru, Karnataka',
+    latitude: 12.2958,
+    longitude: 76.6394,
+  },
+  {
+    name: 'Bengaluru, Karnataka',
+    latitude: 12.9716,
+    longitude: 77.5946,
+  },
+  {
+    name: 'Mandya, Karnataka',
+    latitude: 12.5225,
+    longitude: 76.8970,
+  },
+  {
+    name: 'Hassan, Karnataka',
+    latitude: 13.0033,
+    longitude: 76.1004,
+  },
+  {
+    name: 'Mangaluru, Karnataka',
+    latitude: 12.9141,
+    longitude: 74.8560,
+  },
+];
 
 export default function WeatherIntelligence() {
   const [selectedCrop, setSelectedCrop] = useState('Tomato');
   const [currentStage, setCurrentStage] = useState('Seedling');
   const [targetStage, setTargetStage] = useState('Flowering');
-
+const [selectedLocation, setSelectedLocation] = useState(
+  FARM_LOCATIONS[0]
+);
+const [locationQuery, setLocationQuery] = useState('');
+const [locationResults, setLocationResults] = useState([]);
   const [currentWeather, setCurrentWeather] = useState(null);
   const [forecast, setForecast] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const crop = CROP_PROFILES[selectedCrop];
+  const searchLocations = async () => {
+  if (!locationQuery.trim()) return;
 
+  try {
+    const response = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(locationQuery)}&count=10&language=en&format=json`
+    );
+
+    const data = await response.json();
+
+    setLocationResults(data.results || []);
+  } catch (error) {
+    console.error('Location search failed:', error);
+  }
+};
+const selectLocation = (place) => {
+    setSelectedLocation({
+      name: `${place.name}, ${place.admin1 || ''}, ${place.country}`,
+      latitude: place.latitude,
+      longitude: place.longitude,
+    });
+
+    setLocationResults([]);
+    setLocationQuery('');
+  };
   // Fetch live weather data from the backend.
   const loadWeather = async () => {
     setLoading(true);
     setError('');
 
     try {
-      const [currentResponse, forecastResponse] = await Promise.all([
-        fetch(`${API_BASE}/weather/current`),
-        fetch(`${API_BASE}/weather/forecast`),
-      ]);
+      const params = new URLSearchParams({
+  latitude: String(selectedLocation.latitude),
+  longitude: String(selectedLocation.longitude),
+  location: selectedLocation.name,
+});
+
+const [currentResponse, forecastResponse] = await Promise.all([
+  fetch(`${API_BASE}/weather/current?${params}`),
+  fetch(`${API_BASE}/weather/forecast?${params}`),
+]);
 
       if (!currentResponse.ok || !forecastResponse.ok) {
         throw new Error(
@@ -181,14 +243,16 @@ export default function WeatherIntelligence() {
       setLoading(false);
     }
   };
+useEffect(() => {
+  loadWeather();
 
-  useEffect(() => {
-    loadWeather();
+  const interval = setInterval(
+    loadWeather,
+    10 * 60 * 1000
+  );
 
-    // Refresh weather every 10 minutes.
-    const interval = setInterval(loadWeather, 10 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+  return () => clearInterval(interval);
+}, [selectedLocation]);
 
   const chartData = useMemo(
     () =>
@@ -490,6 +554,50 @@ export default function WeatherIntelligence() {
           Refresh Weather
         </button>
       </div>
+      {/* Farm Location Selection */}
+<div className="mb-6">
+  <h2 className="text-lg font-semibold mb-2">
+    Select Farm Location
+  </h2>
+
+  <div className="flex gap-2">
+    <input
+      type="text"
+      value={locationQuery}
+      onChange={(e) => setLocationQuery(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') searchLocations();
+      }}
+      placeholder="Search any city or town..."
+      className="border rounded-lg p-2 flex-1"
+    />
+
+    <button
+      onClick={searchLocations}
+      className="bg-green-600 text-white px-4 rounded-lg"
+    >
+      Search
+    </button>
+  </div>
+
+  {locationResults.length > 0 && (
+    <div className="border rounded-lg mt-2">
+      {locationResults.map((place) => (
+        <button
+          key={`${place.id}-${place.latitude}`}
+          onClick={() => selectLocation(place)}
+          className="block w-full text-left p-3 hover:bg-gray-100"
+        >
+          {place.name}, {place.admin1 || ''}, {place.country}
+        </button>
+      ))}
+    </div>
+  )}
+
+  <p className="mt-2 text-sm text-gray-500">
+    Current location: {selectedLocation.name}
+  </p>
+</div>
 
       {/* Crop and stage selection */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
