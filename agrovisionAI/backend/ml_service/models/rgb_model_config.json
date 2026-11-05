@@ -1,0 +1,24 @@
+{
+    "model": "sweetpotato_rgb_model.keras",
+    "architecture": "MobileNetV2 transfer learning",
+    "input_size": [
+        160,
+        160,
+        3
+    ],
+    "input_preprocessing": "MobileNetV2 preprocess_input; input RGB values scaled to [-1, 1]",
+    "rgb_band_order": [
+        "Red",
+        "Green",
+        "Blue"
+    ],
+    "classes": {
+        "0": "Early Vegetative",
+        "1": "Mid Vegetative",
+        "2": "Late Vegetative"
+    },
+    "synthetic_training_images": 15,
+    "test_dataset": "Real held-out TARI-NCHU UAV-derived RGB images",
+    "test_accuracy": 0.946656050955414,
+    "phone_camera_validated": false
+}

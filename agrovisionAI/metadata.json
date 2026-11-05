@@ -1,0 +1,6 @@
+{
+  "name": "AgroVision AI",
+  "description": "Deep learning-based plant growth stage identification, disease intelligence, and weather-driven growth milestone prediction platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
