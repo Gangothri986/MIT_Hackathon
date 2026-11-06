@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+
 import {
   Activity,
   UploadCloud,
@@ -12,12 +13,133 @@ import {
   Clock,
   History,
   Eye,
+  Mic,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
+
 import { diseaseService } from '../services/diseaseService';
 import { IMAGES } from '../assets/images';
 
+// ======================================================
+// ENGLISH AND KANNADA TRANSLATIONS
+// ======================================================
+
+const translations = {
+  en: {
+    title: 'Plant Disease Intelligence & Pathology',
+    subtitle: 'Identify visible plant health problems from photographs and receive disease screening and treatment guidance.',
+    upload: 'Upload Leaf or Canopy Photo',
+    presets: '1-Click Pathology Presets for Evaluation:',
+    crop: 'Host Crop Species',
+    diagnose: 'Diagnose Plant Disease',
+    analyzing: 'Scanning Pathological Signatures...',
+    language: 'Response Language',
+    english: 'English',
+    kannada: 'ಕನ್ನಡ',
+    voice: 'Speak about the plant problem',
+    listening: 'Listening...',
+    stopListening: 'Stop Listening',
+    voiceHint: 'Describe the symptoms using your voice. The description is optional.',
+    placeholder: 'Describe the plant problem (optional)',
+    healthy: 'DIAGNOSIS: HEALTHY',
+    confidence: 'Model confidence',
+    observations: 'Visual Observations:',
+    noSymptoms: 'No significant visible symptoms reported.',
+    recommended: 'Recommended Practice:',
+    severity: 'Severity',
+    targetCrop: 'Target Crop:',
+    affected: 'Affected:',
+    pathologyConfidence: 'Pathology Confidence',
+    alternative: 'Alternative possibility:',
+    symptoms: 'Identified Symptoms & Visual Markers',
+    noSymptomsReturned: 'No symptoms were returned.',
+    organic: 'Biological & Organic Control Protocol',
+    noOrganic: 'No organic recommendations provided.',
+    chemical: 'Chemical / Fungicidal Intervention (if needed)',
+    noChemical: 'No chemical treatment recommendations provided.',
+    prevention: 'Preventative Field Measures:',
+    noPrevention: 'No preventive measures provided.',
+    history: 'Diagnostic History Log',
+    records: 'records',
+    loading: 'Loading diagnosis history...',
+    noHistory: 'No diagnosis records yet',
+    historyHint: 'Your MongoDB diagnosis history will appear here.',
+    awaiting: 'Awaiting Specimen',
+    awaitingHint: 'Choose a sample diagnostic preset or upload a leaf photo, then click Diagnose Plant Disease to inspect the specimen.',
+    read: 'Read diagnosis aloud',
+    stopRead: 'Stop reading',
+    voiceUnsupported: 'Speech recognition is not supported in this browser. Please use Chrome.',
+    voiceError: 'Voice recognition failed. Please try again.',
+    micPermission: 'Microphone permission denied. Please allow microphone access.',
+    noSpeech: 'No speech detected. Please speak clearly and try again.',
+  },
+
+  kn: {
+    title: 'ಸಸ್ಯ ರೋಗ ಪತ್ತೆ ಮತ್ತು ವಿಶ್ಲೇಷಣೆ',
+    subtitle: 'ಸಸ್ಯದ ಫೋಟೋದಿಂದ ಗೋಚರಿಸುವ ಆರೋಗ್ಯ ಸಮಸ್ಯೆಗಳನ್ನು ಗುರುತಿಸಿ ಮತ್ತು ಚಿಕಿತ್ಸೆಯ ಸಲಹೆಗಳನ್ನು ಪಡೆಯಿರಿ.',
+    upload: 'ಎಲೆ ಅಥವಾ ಸಸ್ಯದ ಫೋಟೋ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ',
+    presets: 'ಪರೀಕ್ಷೆಗಾಗಿ ಮಾದರಿ ಚಿತ್ರಗಳು:',
+    crop: 'ಬೆಳೆ ಆಯ್ಕೆಮಾಡಿ',
+    diagnose: 'ಸಸ್ಯದ ರೋಗ ಪತ್ತೆ ಮಾಡಿ',
+    analyzing: 'ಚಿತ್ರವನ್ನು ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ...',
+    language: 'ಪ್ರತಿಕ್ರಿಯೆಯ ಭಾಷೆ',
+    english: 'English',
+    kannada: 'ಕನ್ನಡ',
+    voice: 'ಸಸ್ಯದ ಸಮಸ್ಯೆಯನ್ನು ಮಾತನಾಡಿ',
+    listening: 'ಕೇಳಲಾಗುತ್ತಿದೆ...',
+    stopListening: 'ಕೇಳುವುದನ್ನು ನಿಲ್ಲಿಸಿ',
+    voiceHint: 'ನಿಮ್ಮ ಧ್ವನಿಯಲ್ಲಿ ಸಸ್ಯದ ಲಕ್ಷಣಗಳನ್ನು ವಿವರಿಸಿ. ಇದು ಐಚ್ಛಿಕವಾಗಿದೆ.',
+    placeholder: 'ಸಸ್ಯದ ಸಮಸ್ಯೆಯನ್ನು ವಿವರಿಸಿ (ಐಚ್ಛಿಕ)',
+    healthy: 'ರೋಗ ಪತ್ತೆಯಾಗಿಲ್ಲ: ಆರೋಗ್ಯಕರ ಸಸ್ಯ',
+    confidence: 'AI ವಿಶ್ವಾಸ ಮಟ್ಟ',
+    observations: 'ಗೋಚರಿಸುವ ಲಕ್ಷಣಗಳು:',
+    noSymptoms: 'ಗಮನಾರ್ಹ ಲಕ್ಷಣಗಳು ಕಂಡುಬಂದಿಲ್ಲ.',
+    recommended: 'ಶಿಫಾರಸು ಮಾಡಿದ ಕ್ರಮ:',
+    severity: 'ತೀವ್ರತೆ',
+    targetCrop: 'ಬೆಳೆ:',
+    affected: 'ಬಾಧಿತ ಭಾಗ:',
+    pathologyConfidence: 'AI ವಿಶ್ವಾಸ ಮಟ್ಟ',
+    alternative: 'ಪರ್ಯಾಯ ಸಾಧ್ಯತೆ:',
+    symptoms: 'ಗುರುತಿಸಲಾದ ಲಕ್ಷಣಗಳು',
+    noSymptomsReturned: 'ಯಾವುದೇ ಲಕ್ಷಣಗಳು ಲಭ್ಯವಿಲ್ಲ.',
+    organic: 'ಸಾವಯವ ನಿರ್ವಹಣೆ',
+    noOrganic: 'ಸಾವಯವ ಸಲಹೆಗಳು ಲಭ್ಯವಿಲ್ಲ.',
+    chemical: 'ರಾಸಾಯನಿಕ ಚಿಕಿತ್ಸೆ (ಅಗತ್ಯವಿದ್ದರೆ)',
+    noChemical: 'ರಾಸಾಯನಿಕ ಚಿಕಿತ್ಸೆಯ ಸಲಹೆಗಳು ಲಭ್ಯವಿಲ್ಲ.',
+    prevention: 'ತಡೆಗಟ್ಟುವ ಕ್ರಮಗಳು:',
+    noPrevention: 'ತಡೆಗಟ್ಟುವ ಕ್ರಮಗಳು ಲಭ್ಯವಿಲ್ಲ.',
+    history: 'ರೋಗ ಪತ್ತೆ ಇತಿಹಾಸ',
+    records: 'ದಾಖಲೆಗಳು',
+    loading: 'ಇತಿಹಾಸವನ್ನು ಲೋಡ್ ಮಾಡಲಾಗುತ್ತಿದೆ...',
+    noHistory: 'ಇನ್ನೂ ಯಾವುದೇ ದಾಖಲೆಗಳಿಲ್ಲ',
+    historyHint: 'MongoDB ಯಲ್ಲಿನ ರೋಗ ಪತ್ತೆ ದಾಖಲೆಗಳು ಇಲ್ಲಿ ಕಾಣಿಸುತ್ತವೆ.',
+    awaiting: 'ಚಿತ್ರಕ್ಕಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ',
+    awaitingHint: 'ಮಾದರಿ ಚಿತ್ರವನ್ನು ಆಯ್ಕೆಮಾಡಿ ಅಥವಾ ಎಲೆಯ ಫೋಟೋ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ.',
+    read: 'ಫಲಿತಾಂಶವನ್ನು ಓದಿ',
+    stopRead: 'ಓದುವುದನ್ನು ನಿಲ್ಲಿಸಿ',
+    voiceUnsupported: 'ಈ ಬ್ರೌಸರ್‌ನಲ್ಲಿ ಧ್ವನಿ ಗುರುತಿಸುವಿಕೆ ಲಭ್ಯವಿಲ್ಲ. Chrome ಬಳಸಿ.',
+    voiceError: 'ಧ್ವನಿ ಗುರುತಿಸುವಿಕೆ ವಿಫಲವಾಗಿದೆ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
+    micPermission: 'ಮೈಕ್ರೊಫೋನ್ ಅನುಮತಿ ನಿರಾಕರಿಸಲಾಗಿದೆ. ದಯವಿಟ್ಟು ಅನುಮತಿ ನೀಡಿ.',
+    noSpeech: 'ಧ್ವನಿ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಮಾತನಾಡಿ.',
+  },
+};
+
+// ======================================================
+// COMPONENT
+// ======================================================
+
 export default function DiseaseDetection() {
   const fileInputRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  // Holds only the final recognized words.
+  const finalTranscriptRef = useRef('');
+
+  // Preserves text that the farmer typed before speaking.
+  const initialQueryRef = useRef('');
+
+  const recognitionErrorRef = useRef(false);
 
   const [selectedCrop, setSelectedCrop] = useState('Tomato');
   const [previewUrl, setPreviewUrl] = useState(IMAGES.leafDisease);
@@ -29,6 +151,18 @@ export default function DiseaseDetection() {
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+
+  // Language and voice states
+  const [language, setLanguage] = useState('en');
+  const [farmerQuery, setFarmerQuery] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const t = translations[language];
+
+  // ======================================================
+  // SAMPLE DIAGNOSTIC IMAGES
+  // ======================================================
 
   const SAMPLE_DIAGNOSTICS = [
     {
@@ -53,37 +187,340 @@ export default function DiseaseDetection() {
     },
   ];
 
-  // ==========================================
-  // FETCH HISTORY FROM MONGODB
-  // ==========================================
+  // ======================================================
+  // SAFE ARRAY HELPER
+  // ======================================================
+
+  function safeArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  // ======================================================
+  // STOP SPEECH RECOGNITION
+  // ======================================================
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.log('Recognition already stopped.');
+      }
+    }
+
+    setIsListening(false);
+  };
+
+  // ======================================================
+  // STOP TEXT-TO-SPEECH
+  // ======================================================
+
+  const stopSpeaking = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    setIsSpeaking(false);
+  };
+
+  // ======================================================
+  // RESET VOICE FEATURES
+  // ======================================================
+
+  const resetVoice = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (err) {
+        console.log('Recognition already stopped.');
+      }
+
+      recognitionRef.current = null;
+    }
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    finalTranscriptRef.current = '';
+    initialQueryRef.current = '';
+    recognitionErrorRef.current = false;
+
+    setIsListening(false);
+    setIsSpeaking(false);
+  };
+
+  // ======================================================
+  // FETCH DISEASE HISTORY
+  // ======================================================
 
   const loadDiseaseHistory = async () => {
     setHistoryLoading(true);
 
     try {
       const records = await diseaseService.getDiseaseHistory();
+
       setHistory(Array.isArray(records) ? records : []);
+
     } catch (err) {
       console.error('Disease history loading failed:', err);
       setHistory([]);
+
     } finally {
       setHistoryLoading(false);
     }
   };
 
+  // ======================================================
+  // INITIAL LOAD AND CLEANUP
+  // ======================================================
+
   useEffect(() => {
     loadDiseaseHistory();
+
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (err) {
+          // Ignore cleanup errors.
+        }
+      }
+
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
   }, []);
 
-  // ==========================================
+  // ======================================================
+  // START KANNADA / ENGLISH SPEECH RECOGNITION
+  // ======================================================
+
+  const startListening = () => {
+    if (analyzing) return;
+
+    const SpeechRecognition =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setError(t.voiceUnsupported);
+      return;
+    }
+
+    // Stop any previous recognition session.
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (err) {
+        // Ignore previous session errors.
+      }
+
+      recognitionRef.current = null;
+    }
+
+    // Stop any currently playing speech.
+    stopSpeaking();
+
+    const recognition = new SpeechRecognition();
+
+    // Set language based on the selected interface language.
+    recognition.lang = language === 'kn' ? 'kn-IN' : 'en-IN';
+
+    // One speech session at a time.
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    // Preserve manually entered text.
+    initialQueryRef.current = farmerQuery.trim();
+
+    // Reset the recognized transcript.
+    finalTranscriptRef.current = '';
+    recognitionErrorRef.current = false;
+
+    setError('');
+    setIsListening(true);
+
+    recognitionRef.current = recognition;
+
+    // --------------------------------------------------
+    // SPEECH RECOGNITION STARTED
+    // --------------------------------------------------
+
+    recognition.onstart = () => {
+      console.log('Speech recognition started:', recognition.lang);
+      setIsListening(true);
+    };
+
+    // --------------------------------------------------
+    // SPEECH RESULTS
+    // --------------------------------------------------
+
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript.trim();
+
+        if (!transcript) continue;
+
+        if (event.results[i].isFinal) {
+          finalTranscriptRef.current += `${transcript} `;
+        } else {
+          interimTranscript += `${transcript} `;
+        }
+      }
+
+      const finalText = finalTranscriptRef.current.trim();
+
+      const updatedText = [
+        initialQueryRef.current,
+        finalText,
+        interimTranscript.trim(),
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      setFarmerQuery(updatedText);
+
+      console.log('Recognized speech:', updatedText);
+    };
+
+    // --------------------------------------------------
+    // SPEECH RECOGNITION ERROR
+    // --------------------------------------------------
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+
+      recognitionErrorRef.current = true;
+      setIsListening(false);
+
+      if (event.error === 'no-speech') {
+        setError(t.noSpeech);
+      } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setError(t.micPermission);
+      } else if (event.error !== 'aborted') {
+        setError(t.voiceError);
+      }
+    };
+
+    // --------------------------------------------------
+    // SPEECH RECOGNITION ENDED
+    // --------------------------------------------------
+
+    recognition.onend = () => {
+      console.log('Speech recognition ended');
+
+      setIsListening(false);
+
+      const finalText = [
+        initialQueryRef.current,
+        finalTranscriptRef.current.trim(),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      if (finalText) {
+        setFarmerQuery(finalText);
+      }
+
+      if (recognitionRef.current === recognition) {
+        recognitionRef.current = null;
+      }
+    };
+
+    // --------------------------------------------------
+    // START MICROPHONE
+    // --------------------------------------------------
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error('Microphone start error:', err);
+
+      recognitionRef.current = null;
+      setIsListening(false);
+      setError('Unable to start microphone. Please try again.');
+    }
+  };
+
+  // ======================================================
+  // TEXT-TO-SPEECH: READ DIAGNOSIS
+  // ======================================================
+
+  const speakResult = () => {
+    if (!result) return;
+
+    if (!('speechSynthesis' in window)) {
+      setError('Text-to-speech is not supported in this browser.');
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    const textToSpeak = [
+      result.name || result.diseaseName,
+      `${t.severity}: ${result.severity || 'Unknown'}`,
+      `${t.confidence}: ${result.confidence ?? 0}%`,
+      result.alternativeDiagnosis,
+      ...safeArray(result.symptoms),
+      ...safeArray(result.organicManagement),
+      ...safeArray(result.chemicalTreatment),
+      ...safeArray(result.preventiveMeasures),
+    ]
+      .filter(Boolean)
+      .join('. ');
+
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+
+    utterance.lang = language === 'kn' ? 'kn-IN' : 'en-IN';
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+
+    // Select a matching installed voice if available.
+    const voices = window.speechSynthesis.getVoices();
+
+    const preferredVoice = voices.find((voice) =>
+      voice.lang.toLowerCase().startsWith(language === 'kn' ? 'kn' : 'en-in')
+    );
+
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+    };
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      setError('Unable to read the diagnosis aloud.');
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // ======================================================
   // SELECT SAMPLE IMAGE
-  // ==========================================
+  // ======================================================
 
   const handleSelectSample = (sample) => {
+    resetVoice();
+
     setSelectedCrop(sample.crop);
     setPreviewUrl(sample.image);
     setSelectedFile(null);
+
     setResult(null);
+    setFarmerQuery('');
     setError('');
 
     if (fileInputRef.current) {
@@ -91,26 +528,34 @@ export default function DiseaseDetection() {
     }
   };
 
-  // ==========================================
+  // ======================================================
   // UPLOAD IMAGE
-  // ==========================================
+  // ======================================================
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
 
     if (!file) return;
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const allowedTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ];
 
     if (!allowedTypes.includes(file.type)) {
       setError('Please select a JPG, PNG or WEBP image.');
+      e.target.value = '';
       return;
     }
 
     if (file.size > 8 * 1024 * 1024) {
       setError('Image size must be less than 8 MB.');
+      e.target.value = '';
       return;
     }
+
+    resetVoice();
 
     setSelectedFile(file);
 
@@ -118,18 +563,27 @@ export default function DiseaseDetection() {
     setPreviewUrl(objectUrl);
 
     setResult(null);
+    setFarmerQuery('');
     setError('');
+
+    e.target.value = '';
   };
 
-  // ==========================================
+  // ======================================================
   // DETECT DISEASE
-  // ==========================================
+  // ======================================================
 
   const handleDetect = async () => {
     if (!previewUrl) {
       setError('Please select or upload a plant image.');
       return;
     }
+
+    if (isListening) {
+      stopListening();
+    }
+
+    stopSpeaking();
 
     setAnalyzing(true);
     setResult(null);
@@ -140,29 +594,42 @@ export default function DiseaseDetection() {
         imageFile: selectedFile,
         imageUrl: previewUrl,
         cropType: selectedCrop,
+        language,
+        farmerQuery: farmerQuery.trim(),
       });
 
-      setResult(response);
+      if (!response) {
+        throw new Error('The disease detection API returned an empty response.');
+      }
 
-      // Fetch the latest records from MongoDB.
+      setResult({
+        ...response,
+        language,
+      });
+
       await loadDiseaseHistory();
 
     } catch (err) {
       console.error('Disease detection error:', err);
 
       setError(
-        err.message || 'Unable to analyze the plant image.'
+        err.response?.data?.message ||
+        err.message ||
+        'Unable to analyze the plant image.'
       );
+
     } finally {
       setAnalyzing(false);
     }
   };
 
-  // ==========================================
+  // ======================================================
   // VIEW EXISTING HISTORY RECORD
-  // ==========================================
+  // ======================================================
 
   const handleViewHistory = (item) => {
+    resetVoice();
+
     setResult({
       ...item,
       name: item.diseaseName || item.name,
@@ -174,11 +641,14 @@ export default function DiseaseDetection() {
       preventiveMeasures: item.preventiveMeasures || [],
       confidence: item.confidence ?? 0,
       imageUrl: item.imageUrl,
+      language,
     });
 
     setSelectedCrop(item.crop || 'Tomato');
     setPreviewUrl(item.imageUrl || IMAGES.leafDisease);
     setSelectedFile(null);
+
+    setFarmerQuery('');
     setError('');
 
     window.scrollTo({
@@ -187,17 +657,21 @@ export default function DiseaseDetection() {
     });
   };
 
-  // ==========================================
-  // SAFE ARRAY HELPER
-  // ==========================================
+  // ======================================================
+  // CHANGE RESPONSE LANGUAGE
+  // ======================================================
 
-  const safeArray = (value) => {
-    return Array.isArray(value) ? value : [];
+  const handleLanguageChange = (newLanguage) => {
+    if (newLanguage === language) return;
+
+    resetVoice();
+    setLanguage(newLanguage);
+    setError('');
   };
 
-  // ==========================================
+  // ======================================================
   // UI
-  // ==========================================
+  // ======================================================
 
   return (
     <div className="space-y-6">
@@ -210,35 +684,78 @@ export default function DiseaseDetection() {
         </span>
 
         <h1 className="text-2xl sm:text-3xl font-display font-extrabold text-slate-900 tracking-tight">
-          Plant Disease Intelligence &amp; Pathology
+          {t.title}
         </h1>
 
         <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl">
-          Identify visible plant health problems from photographs.
-          Receive disease screening results, severity rankings,
-          organic management suggestions and chemical treatment guidance.
+          {t.subtitle}
         </p>
+      </div>
+
+      {/* LANGUAGE SELECTOR */}
+
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+
+        <div>
+          <p className="text-xs font-bold text-slate-800">
+            {t.language}
+          </p>
+
+          <p className="text-[11px] text-slate-500">
+            Choose the language for the AI diagnosis and voice response.
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+
+          <button
+            type="button"
+            onClick={() => handleLanguageChange('en')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold border transition ${
+              language === 'en'
+                ? 'bg-[#123B2A] text-white border-[#123B2A]'
+                : 'bg-slate-50 text-slate-700 border-slate-200'
+            }`}
+          >
+            {t.english}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleLanguageChange('kn')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold border transition ${
+              language === 'kn'
+                ? 'bg-[#123B2A] text-white border-[#123B2A]'
+                : 'bg-slate-50 text-slate-700 border-slate-200'
+            }`}
+          >
+            {t.kannada}
+          </button>
+
+        </div>
       </div>
 
       {/* MAIN GRID */}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-        {/* LEFT: IMAGE UPLOAD */}
+        {/* ==================================================
+            LEFT COLUMN: IMAGE UPLOAD
+        ================================================== */}
 
         <div className="lg:col-span-5 space-y-4">
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
 
             <h3 className="font-display font-bold text-sm text-slate-900">
-              Upload Leaf or Canopy Photo
+              {t.upload}
             </h3>
 
             {/* SAMPLE IMAGES */}
 
             <div>
               <p className="text-[11px] font-semibold text-slate-500 mb-2">
-                1-Click Pathology Presets for Evaluation:
+                {t.presets}
               </p>
 
               <div className="space-y-1.5">
@@ -309,7 +826,7 @@ export default function DiseaseDetection() {
 
                   <div>
                     <p className="text-xs font-bold text-slate-800">
-                      Upload Leaf or Canopy Photo
+                      {t.upload}
                     </p>
 
                     <p className="text-[11px] text-slate-400">
@@ -331,9 +848,8 @@ export default function DiseaseDetection() {
             {/* CROP SELECTOR */}
 
             <div>
-
               <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                Host Crop Species
+                {t.crop}
               </label>
 
               <select
@@ -354,6 +870,76 @@ export default function DiseaseDetection() {
                   Paddy / Rice (Oryza sativa)
                 </option>
               </select>
+            </div>
+
+            {/* ==================================================
+                FARMER VOICE INPUT
+            ================================================== */}
+
+            <div className="space-y-2">
+
+              <label className="block text-[11px] font-semibold text-slate-700">
+                {t.voice}
+              </label>
+
+              <div className="flex gap-2">
+
+                <textarea
+                  value={farmerQuery}
+                  onChange={(e) => setFarmerQuery(e.target.value)}
+                  rows={3}
+                  placeholder={t.placeholder}
+                  disabled={analyzing || isListening}
+                  className="flex-1 min-w-0 px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-600 resize-y disabled:opacity-60"
+                />
+
+                <button
+                  type="button"
+                  onClick={
+                    isListening
+                      ? stopListening
+                      : startListening
+                  }
+                  disabled={analyzing}
+                  title={isListening ? t.stopListening : t.voice}
+                  className={`self-start p-3 rounded-xl transition disabled:opacity-50 ${
+                    isListening
+                      ? 'bg-red-600 text-white animate-pulse'
+                      : 'bg-[#123B2A] text-white hover:bg-emerald-700'
+                  }`}
+                >
+                  <Mic className="w-5 h-5" />
+                </button>
+
+              </div>
+
+              <p className="text-[10px] text-slate-400">
+                {isListening ? t.listening : t.voiceHint}
+              </p>
+
+              {isListening && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-[11px] text-emerald-800">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  {language === 'kn'
+                    ? 'ನಿಮ್ಮ ಸಮಸ್ಯೆಯನ್ನು ಕನ್ನಡದಲ್ಲಿ ವಿವರಿಸಿ...'
+                    : 'Speak clearly to describe the plant symptoms...'}
+                </div>
+              )}
+
+              {farmerQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFarmerQuery('');
+                    finalTranscriptRef.current = '';
+                    initialQueryRef.current = '';
+                  }}
+                  disabled={isListening || analyzing}
+                  className="text-[10px] text-red-600 hover:underline disabled:opacity-50"
+                >
+                  {language === 'kn' ? 'ವಿವರಣೆಯನ್ನು ಅಳಿಸಿ' : 'Clear voice description'}
+                </button>
+              )}
 
             </div>
 
@@ -362,23 +948,23 @@ export default function DiseaseDetection() {
             <button
               type="button"
               onClick={handleDetect}
-              disabled={analyzing}
+              disabled={analyzing || isListening}
               className="w-full py-3 px-4 bg-[#123B2A] hover:bg-[#16A36A] active:scale-[0.99] disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-2"
             >
               {analyzing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin text-[#B7E46A]" />
-                  <span>Scanning Pathological Signatures...</span>
+                  <span>{t.analyzing}</span>
                 </>
               ) : (
                 <>
                   <Activity className="w-4 h-4 text-[#B7E46A]" />
-                  <span>Diagnose Plant Disease</span>
+                  <span>{t.diagnose}</span>
                 </>
               )}
             </button>
 
-            {/* ERROR */}
+            {/* ERROR MESSAGE */}
 
             {error && (
               <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
@@ -389,7 +975,9 @@ export default function DiseaseDetection() {
           </div>
         </div>
 
-        {/* RIGHT: RESULT AND HISTORY */}
+        {/* ==================================================
+            RIGHT COLUMN: RESULTS AND HISTORY
+        ================================================== */}
 
         <div className="lg:col-span-7 space-y-4">
 
@@ -398,6 +986,30 @@ export default function DiseaseDetection() {
           {result ? (
 
             <div className="space-y-4 animate-fade-in">
+
+              {/* VOICE OUTPUT BUTTON */}
+
+              <div className="flex justify-end">
+
+                <button
+                  type="button"
+                  onClick={isSpeaking ? stopSpeaking : speakResult}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#123B2A] text-white text-xs font-semibold hover:bg-emerald-700"
+                >
+                  {isSpeaking ? (
+                    <>
+                      <VolumeX className="w-4 h-4" />
+                      {t.stopRead}
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="w-4 h-4" />
+                      {t.read}
+                    </>
+                  )}
+                </button>
+
+              </div>
 
               {/* HEALTHY RESULT */}
 
@@ -414,7 +1026,7 @@ export default function DiseaseDetection() {
                     <div className="flex-1">
 
                       <span className="text-[11px] font-bold font-mono text-emerald-800">
-                        DIAGNOSIS: HEALTHY
+                        {t.healthy}
                       </span>
 
                       <h3 className="text-xl font-bold font-display text-slate-900 tracking-tight">
@@ -422,7 +1034,7 @@ export default function DiseaseDetection() {
                       </h3>
 
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Model confidence:{' '}
+                        {t.confidence}:{' '}
                         <strong className="font-mono text-emerald-700">
                           {result.confidence}%
                         </strong>
@@ -434,23 +1046,23 @@ export default function DiseaseDetection() {
                   <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs space-y-1.5">
 
                     <p className="font-semibold text-emerald-950">
-                      Visual Observations:
+                      {t.observations}
                     </p>
 
                     {safeArray(result.symptoms).length > 0 ? (
-                      <ul className="space-y-1 text-emerald-900">
 
+                      <ul className="space-y-1 text-emerald-900">
                         {safeArray(result.symptoms).map((s, i) => (
                           <li key={i} className="flex items-center gap-1.5">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                             <span>{s}</span>
                           </li>
                         ))}
-
                       </ul>
+
                     ) : (
                       <p className="text-emerald-800">
-                        No significant visible symptoms reported.
+                        {t.noSymptoms}
                       </p>
                     )}
 
@@ -458,7 +1070,7 @@ export default function DiseaseDetection() {
 
                   {safeArray(result.organicManagement).length > 0 && (
                     <div className="text-xs text-slate-600">
-                      <strong>Recommended Practice:</strong>{' '}
+                      <strong>{t.recommended}</strong>{' '}
                       {result.organicManagement[0]}
                     </div>
                   )}
@@ -478,7 +1090,7 @@ export default function DiseaseDetection() {
                       <div className="flex items-center gap-2">
 
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase bg-red-100 text-red-800">
-                          {result.severity || 'Unknown'} Severity
+                          {result.severity || 'Unknown'} {t.severity}
                         </span>
 
                         <span className="text-[11px] text-slate-400 font-mono">
@@ -492,9 +1104,9 @@ export default function DiseaseDetection() {
                       </h3>
 
                       <p className="text-xs text-slate-500">
-                        Target Crop: {result.crop || selectedCrop}
+                        {t.targetCrop} {result.crop || selectedCrop}
                         {' · '}
-                        Affected: {result.affectedParts || 'Not specified'}
+                        {t.affected} {result.affectedParts || 'Not specified'}
                       </p>
 
                     </div>
@@ -506,18 +1118,17 @@ export default function DiseaseDetection() {
                       </span>
 
                       <span className="text-[11px] text-slate-400">
-                        Pathology Confidence
+                        {t.pathologyConfidence}
                       </span>
 
                     </div>
-
                   </div>
 
                   {/* ALTERNATIVE DIAGNOSIS */}
 
                   {result.alternativeDiagnosis && (
                     <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
-                      <strong>Alternative possibility:</strong>{' '}
+                      <strong>{t.alternative}</strong>{' '}
                       {result.alternativeDiagnosis}
                     </div>
                   )}
@@ -527,12 +1138,12 @@ export default function DiseaseDetection() {
                   <div className="space-y-2">
 
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      Identified Symptoms &amp; Visual Markers
+                      {t.symptoms}
                     </h4>
 
                     {safeArray(result.symptoms).length > 0 ? (
-                      <ul className="space-y-1.5 text-xs text-slate-700">
 
+                      <ul className="space-y-1.5 text-xs text-slate-700">
                         {safeArray(result.symptoms).map((sym, idx) => (
                           <li
                             key={idx}
@@ -542,11 +1153,11 @@ export default function DiseaseDetection() {
                             <span>{sym}</span>
                           </li>
                         ))}
-
                       </ul>
+
                     ) : (
                       <p className="text-xs text-slate-500">
-                        No symptoms were returned.
+                        {t.noSymptomsReturned}
                       </p>
                     )}
 
@@ -558,23 +1169,23 @@ export default function DiseaseDetection() {
 
                     <h4 className="font-bold text-emerald-950 flex items-center gap-1.5">
                       <Sparkles className="w-4 h-4 text-emerald-700" />
-                      <span>Biological &amp; Organic Control Protocol</span>
+                      <span>{t.organic}</span>
                     </h4>
 
                     {safeArray(result.organicManagement).length > 0 ? (
-                      <ul className="space-y-1 text-emerald-900">
 
+                      <ul className="space-y-1 text-emerald-900">
                         {safeArray(result.organicManagement).map((org, idx) => (
                           <li key={idx} className="flex items-start gap-2">
                             <span className="text-emerald-700 font-bold">•</span>
                             <span>{org}</span>
                           </li>
                         ))}
-
                       </ul>
+
                     ) : (
                       <p className="text-emerald-800">
-                        No organic recommendations provided.
+                        {t.noOrganic}
                       </p>
                     )}
 
@@ -586,23 +1197,23 @@ export default function DiseaseDetection() {
 
                     <h4 className="font-bold text-amber-950 flex items-center gap-1.5">
                       <Pill className="w-4 h-4 text-amber-700" />
-                      <span>Chemical / Fungicidal Intervention (if needed)</span>
+                      <span>{t.chemical}</span>
                     </h4>
 
                     {safeArray(result.chemicalTreatment).length > 0 ? (
-                      <ul className="space-y-1 text-amber-900">
 
+                      <ul className="space-y-1 text-amber-900">
                         {safeArray(result.chemicalTreatment).map((chem, idx) => (
                           <li key={idx} className="flex items-start gap-2">
                             <span className="text-amber-700 font-bold">•</span>
                             <span>{chem}</span>
                           </li>
                         ))}
-
                       </ul>
+
                     ) : (
                       <p className="text-amber-800">
-                        No chemical treatment recommendations provided.
+                        {t.noChemical}
                       </p>
                     )}
 
@@ -613,13 +1224,13 @@ export default function DiseaseDetection() {
                   <div className="space-y-1 text-xs text-slate-600 pt-2 border-t border-slate-100">
 
                     <p className="font-semibold text-slate-800">
-                      Preventative Field Measures:
+                      {t.prevention}
                     </p>
 
                     <p>
                       {safeArray(result.preventiveMeasures).length > 0
                         ? result.preventiveMeasures.join(' · ')
-                        : 'No preventive measures provided.'}
+                        : t.noPrevention}
                     </p>
 
                   </div>
@@ -640,37 +1251,36 @@ export default function DiseaseDetection() {
               </div>
 
               <h3 className="font-display font-bold text-base text-slate-900">
-                Awaiting Specimen
+                {t.awaiting}
               </h3>
 
               <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                Choose a sample diagnostic preset or upload a leaf photo,
-                then click Diagnose Plant Disease to inspect the specimen.
+                {t.awaitingHint}
               </p>
 
             </div>
           )}
 
-          {/* DISEASE HISTORY */}
+          {/* ==================================================
+              DISEASE HISTORY
+          ================================================== */}
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
 
             <div className="flex items-center justify-between gap-2">
 
               <div className="flex items-center gap-2">
-
                 <History className="w-4 h-4 text-emerald-700" />
 
                 <h3 className="font-display font-bold text-sm text-slate-900">
-                  Diagnostic History Log
+                  {t.history}
                 </h3>
-
               </div>
 
               <div className="flex items-center gap-2">
 
                 <span className="text-[11px] font-mono text-slate-400">
-                  {history.length} records
+                  {history.length} {t.records}
                 </span>
 
                 <button
@@ -688,14 +1298,13 @@ export default function DiseaseDetection() {
                 </button>
 
               </div>
-
             </div>
 
             {historyLoading ? (
 
               <div className="py-8 text-center text-xs text-slate-500">
                 <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-emerald-700" />
-                Loading diagnosis history...
+                {t.loading}
               </div>
 
             ) : history.length === 0 ? (
@@ -705,11 +1314,11 @@ export default function DiseaseDetection() {
                 <Clock className="w-8 h-8 text-slate-300 mx-auto mb-2" />
 
                 <p className="text-xs font-semibold text-slate-600">
-                  No diagnosis records yet
+                  {t.noHistory}
                 </p>
 
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Your MongoDB diagnosis history will appear here.
+                  {t.historyHint}
                 </p>
 
               </div>
@@ -718,10 +1327,10 @@ export default function DiseaseDetection() {
 
               <div className="divide-y divide-slate-100 text-xs">
 
-                {history.map((item) => (
+                {history.map((item, index) => (
 
                   <div
-                    key={item.id || item.logId}
+                    key={item.id || item.logId || item._id || index}
                     className="py-2.5 flex items-center justify-between gap-3"
                   >
 
@@ -753,7 +1362,6 @@ export default function DiseaseDetection() {
                         </p>
 
                       </div>
-
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
@@ -786,9 +1394,7 @@ export default function DiseaseDetection() {
                       </button>
 
                     </div>
-
                   </div>
-
                 ))}
 
               </div>

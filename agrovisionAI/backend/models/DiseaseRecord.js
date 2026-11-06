@@ -17,7 +17,15 @@ const diseaseRecordSchema = new mongoose.Schema(
     crop: {
       type: String,
       required: true,
-      enum: ['Tomato', 'Chilli', 'Paddy'],
+      enum: [
+        'Tomato',
+        'Chilli',
+        'Paddy',
+        'Rice',
+        'Wheat',
+        'Sweet Potato',
+        'Cotton',
+      ],
     },
 
     diseaseName: {
@@ -94,9 +102,23 @@ const diseaseRecordSchema = new mongoose.Schema(
       default: [],
     },
 
-    date: {
+    // Language selected during disease detection.
+    language: {
       type: String,
-      required: true,
+      enum: ['en', 'kn'],
+      default: 'en',
+    },
+
+    // Farmer's voice-transcribed or manually entered description.
+    farmerQuery: {
+      type: String,
+      default: '',
+      maxlength: 1000,
+    },
+
+    date: {
+      type: Date,
+      default: Date.now,
     },
 
     userId: {

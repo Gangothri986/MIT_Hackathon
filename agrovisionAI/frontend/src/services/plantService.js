@@ -312,5 +312,19 @@ export const predictionService = {
 
     return response.data;
   },
+    async askGrowthQuestion({ question, plantContext }) {
+    const response = await apiClient.post('/analyze/ask', {
+      question,
+      plantContext,
+    });
+
+    if (!response.data?.success || !response.data?.answer) {
+      throw new Error(
+        response.data?.message || 'Could not get a Kannada answer.'
+      );
+    }
+
+    return response.data;
+  },
 };
 

@@ -633,6 +633,100 @@ router.post('/', async (req, res) => {
     });
   }
 });
+// ======================================================
+// POST /api/analyze/ask
+// KANNADA FARMER QUESTION + GEMINI ANSWER
+// ======================================================
+
+router.post('/ask', async (req, res) => {
+  try {
+    const { question, plantContext } = req.body || {};
+
+    if (!question || typeof question !== 'string' || !question.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a question in Kannada.',
+      });
+    }
+
+    if (!plantContext || typeof plantContext !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'Plant analysis context is required.',
+      });
+    }
+
+    const ai = getGrowthAI();
+
+    const safeContext = {
+      cropType: plantContext.cropType,
+      currentStage: plantContext.currentStage,
+      confidence: plantContext.confidence,
+      visualCharacteristics: plantContext.visualCharacteristics,
+      recommendations: plantContext.recommendations,
+      nextStage: plantContext.nextStage,
+      uncertainty: plantContext.uncertainty,
+      isReliable: plantContext.isReliable,
+    };
+
+    const prompt = `
+ನೀವು ಕರ್ನಾಟಕದ ರೈತರಿಗೆ ಸಹಾಯ ಮಾಡುವ ಕೃಷಿ ತಜ್ಞ AI ಸಹಾಯಕರು.
+
+ರೈತರು ಕನ್ನಡದಲ್ಲಿ ಕೇಳಿದ ಪ್ರಶ್ನೆಗೆ ಸರಳವಾದ, ಸ್ಪಷ್ಟವಾದ ಮತ್ತು ಉಪಯುಕ್ತ ಕನ್ನಡದಲ್ಲಿ ಉತ್ತರಿಸಿ.
+
+ಸಸ್ಯದ ವಿಶ್ಲೇಷಣೆಯ ಮಾಹಿತಿ:
+
+${JSON.stringify(safeContext, null, 2)}
+
+ರೈತರ ಪ್ರಶ್ನೆ:
+${question.trim()}
+
+ಉತ್ತರಿಸುವ ನಿಯಮಗಳು:
+
+1. ಉತ್ತರವನ್ನು ಕನ್ನಡದಲ್ಲಿಯೇ ನೀಡಿ.
+2. ರೈತರಿಗೆ ಸುಲಭವಾಗಿ ಅರ್ಥವಾಗುವ ಸರಳ ಕನ್ನಡ ಬಳಸಿ.
+3. ಸಸ್ಯದ ಪ್ರಸ್ತುತ ಬೆಳವಣಿಗೆಯ ಹಂತಕ್ಕೆ ಸಂಬಂಧಿಸಿದಂತೆ ಉತ್ತರಿಸಿ.
+4. ಅಗತ್ಯವಿದ್ದರೆ ಪ್ರಾಯೋಗಿಕ ಕೃಷಿ ಸಲಹೆಗಳನ್ನು ನೀಡಿ.
+5. ವಿಶ್ಲೇಷಣೆಯಲ್ಲಿ ಇಲ್ಲದ ಮಾಹಿತಿಯನ್ನು ನಿಜವೆಂದು ಕಲ್ಪಿಸಬೇಡಿ.
+6. ನಿಖರವಾದ ರಾಸಾಯನಿಕ ಪ್ರಮಾಣ ಅಥವಾ ಔಷಧಿಯ ಪ್ರಮಾಣವನ್ನು ಊಹಿಸಿ ಹೇಳಬೇಡಿ.
+7. ಮಾಹಿತಿ ಸಾಕಾಗದಿದ್ದರೆ, ಇನ್ನಷ್ಟು ವಿವರ ಅಥವಾ ಸ್ಪಷ್ಟವಾದ ಚಿತ್ರವನ್ನು ಕೇಳಿ.
+8. ಚಿಕ್ಕದಾದ, ಮಾತನಾಡುವ ಶೈಲಿಯ ಉತ್ತರ ನೀಡಿ. ಧ್ವನಿಯಲ್ಲಿ ಓದಲು ಅನುಕೂಲವಾಗಿರಲಿ.
+9. Markdown tables ಅಥವಾ JSON ಬಳಸಬೇಡಿ.
+
+ಕನ್ನಡದಲ್ಲಿಯೇ ಉತ್ತರವನ್ನು ನೀಡಿ.
+`;
+
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: [{ text: prompt }],
+      config: {
+        maxOutputTokens: 700,
+      },
+    });
+
+    const answer = response.text?.trim();
+
+    if (!answer) {
+      throw new Error('Gemini returned an empty Kannada answer.');
+    }
+
+    return res.json({
+      success: true,
+      question: question.trim(),
+      answer,
+      language: 'kn-IN',
+    });
+
+  } catch (error) {
+    console.error('Kannada farmer assistant error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to answer the Kannada question.',
+      error: error.message,
+    });
+  }
+});
 
 // ======================================================
 // UPDATE PLANT

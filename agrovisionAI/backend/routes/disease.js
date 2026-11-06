@@ -58,7 +58,7 @@ async function generateWithRetry(ai, request, maxAttempts = 3) {
     } catch (error) {
       const status = Number(error.status || error.code);
 
-      const temporaryError = [500, 503, 504].includes(status);
+      const temporaryError = [429, 500, 503, 504].includes(status);
 
       if (!temporaryError || attempt === maxAttempts) {
         throw error;
@@ -76,7 +76,9 @@ async function generateWithRetry(ai, request, maxAttempts = 3) {
     }
   }
 
-  throw new Error('Gemini analysis failed after multiple attempts.');
+  throw new Error(
+    'Gemini analysis failed after multiple attempts.'
+  );
 }
 
 // --------------------------------------------------
@@ -123,7 +125,19 @@ const upload = multer({
   },
 });
 
-const allowedCrops = ['Tomato', 'Chilli', 'Paddy'];
+// --------------------------------------------------
+// SUPPORTED CROPS
+// --------------------------------------------------
+
+const allowedCrops = [
+  'Rice',
+  'Paddy',
+  'Wheat',
+  'Sweet Potato',
+  'Cotton',
+  'Chilli',
+  'Tomato',
+];
 
 // --------------------------------------------------
 // GEMINI RESPONSE SCHEMA
@@ -223,22 +237,19 @@ router.post(
     let recordSaved = false;
 
     try {
-      // Check MongoDB connection
+      // Check MongoDB connection.
       if (mongoose.connection.readyState !== 1) {
         throw new Error(
           'MongoDB is not connected. Check your database connection.'
         );
       }
 
-      // Check Gemini API key
+      // Check Gemini API key.
       if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({
-          success: false,
-          message: 'Gemini API key is missing.',
-        });
+        throw new Error('Gemini API key is missing.');
       }
 
-      // Check image
+      // Check uploaded image.
       if (!req.file) {
         return res.status(400).json({
           success: false,
@@ -246,26 +257,42 @@ router.post(
         });
       }
 
-      // Validate crop
-      const cropType = req.body.crop_type || 'Tomato';
+      // Read form fields.
+      const requestedCrop = String(
+        req.body.crop_type || 'Tomato'
+      ).trim();
 
-      if (!allowedCrops.includes(cropType)) {
+      const cropType =
+        requestedCrop === 'Paddy' ? 'Rice' : requestedCrop;
+
+      const language =
+        req.body.language === 'kn' ? 'kn' : 'en';
+
+      const farmerQuery = String(
+        req.body.farmer_query || ''
+      )
+        .trim()
+        .slice(0, 1000);
+
+      // Validate crop.
+      if (!allowedCrops.includes(requestedCrop)) {
         return res.status(400).json({
           success: false,
-          message: 'Unsupported crop. Choose Tomato, Chilli or Paddy.',
+          message:
+            'Unsupported crop. Choose Rice, Wheat, Sweet Potato, Cotton, Chilli or Tomato.',
         });
       }
 
-      // Image URL saved in MongoDB
+      // Image URL.
       const imageUrl = `/uploads/${req.file.filename}`;
 
-      // Read image
+      // Read uploaded image.
       const imageBuffer = fs.readFileSync(req.file.path);
 
       const base64Image = imageBuffer.toString('base64');
 
       // --------------------------------------------------
-      // DISEASE DETECTION PROMPT
+      // GEMINI DISEASE DETECTION PROMPT
       // --------------------------------------------------
 
       const prompt = `
@@ -273,27 +300,68 @@ You are an AI-assisted agricultural plant disease screening assistant.
 
 Analyze the actual attached plant photograph carefully.
 
-Selected crop: ${cropType}
+SELECTED CROP: ${cropType}
 
-Your task is to identify visible plant health problems.
+FARMER'S ADDITIONAL DESCRIPTION:
+${farmerQuery || 'No additional description provided.'}
+
+RESPONSE LANGUAGE:
+
+${language === 'kn'
+  ? 'Kannada (ಕನ್ನಡ)'
+  : 'English'}
+
+Return ALL human-readable text values in the selected response language.
+
+This includes:
+- name
+- alternativeDiagnosis
+- pathogenType
+- affectedParts
+- symptoms
+- organicManagement
+- chemicalTreatment
+- preventiveMeasures
+
+If Kannada is selected:
+- Write naturally in Kannada script.
+- Use simple Kannada that farmers can understand.
+- Keep scientific disease names where useful, with Kannada explanations.
+- Give practical recommendations in Kannada.
+
+If English is selected:
+- Use clear, simple English.
+
+Keep these fields unchanged in format:
+- isHealthy must remain boolean.
+- confidence must remain a number from 0 to 100.
+- severity must remain one of: None, Low, Medium, High.
+- crop must remain the selected crop name in English.
+
+Use the farmer's description as additional context.
+Base the diagnosis primarily on the attached photograph.
+Do not accept a farmer's guess as proof of a disease.
 
 SUPPORTED CROPS:
-- Tomato
+- Rice
+- Wheat
+- Sweet Potato
+- Cotton
 - Chilli
-- Paddy (Rice)
+- Tomato
 
 DIAGNOSTIC RULES:
 
 1. Analyze the actual image. Never identify a disease based only on the selected crop.
 
 2. Identify ONE most likely primary disease.
-   Put only that disease name in the "name" field.
+   Put only that disease name in the name field.
    Never combine multiple diseases using "or".
 
-3. If another disease is also visually possible, mention it separately
-   in "alternativeDiagnosis".
+3. If another disease is visually possible, mention it separately
+   in alternativeDiagnosis.
 
-4. Differentiate diseases using their characteristic visible symptoms.
+4. Differentiate diseases using characteristic visible symptoms.
    For example, distinguish Septoria leaf spot from early blight.
    Do not identify early blight solely because brown spots are present.
    Look for characteristic concentric target-like rings.
@@ -303,6 +371,7 @@ DIAGNOSTIC RULES:
 
 6. If the photograph is unclear, insufficient or not a plant,
    explain this limitation in the diagnosis.
+   Do not confidently claim a disease without sufficient evidence.
 
 7. Confidence must be a NUMBER from 0 to 100.
    Return 88 for 88% confidence, NOT 0.88.
@@ -318,7 +387,7 @@ DIAGNOSTIC RULES:
 9. If the plant appears healthy:
    - Set isHealthy to true.
    - Set severity to None.
-   - Set name to "No visible disease detected".
+   - Set name to "No visible disease detected" in the selected language.
 
 10. If a disease is suspected:
     - Set isHealthy to false.
@@ -330,6 +399,9 @@ DIAGNOSTIC RULES:
 12. Do not provide chemical dosages.
     Recommend following locally approved product labels and consulting
     an agricultural expert before chemical application.
+
+13. Do not invent treatment products or claim that a treatment
+    guarantees recovery.
 
 Return only valid JSON matching the required schema.
 `;
@@ -366,7 +438,9 @@ Return only valid JSON matching the required schema.
       // --------------------------------------------------
 
       if (!response || !response.text) {
-        throw new Error('Gemini returned an empty response.');
+        throw new Error(
+          'Gemini returned an empty response.'
+        );
       }
 
       const matched = JSON.parse(response.text);
@@ -378,10 +452,12 @@ Return only valid JSON matching the required schema.
           matched.severity
         )
       ) {
-        throw new Error('Gemini returned an invalid diagnosis.');
+        throw new Error(
+          'Gemini returned an invalid diagnosis.'
+        );
       }
 
-      // Normalize confidence
+      // Normalize confidence.
       let confidence = Number(matched.confidence);
 
       if (!Number.isFinite(confidence)) {
@@ -397,12 +473,12 @@ Return only valid JSON matching the required schema.
         Math.min(100, confidence)
       );
 
-      // Healthy plant severity
+      // Healthy plant severity.
       if (matched.isHealthy) {
         matched.severity = 'None';
       }
 
-      // Ensure arrays exist
+      // Ensure arrays exist.
       matched.symptoms = Array.isArray(matched.symptoms)
         ? matched.symptoms
         : [];
@@ -443,14 +519,14 @@ Return only valid JSON matching the required schema.
 
       const record = new DiseaseRecord({
         logId,
-
         plantId,
 
         crop: cropType,
 
         diseaseName: matched.name,
 
-        alternativeDiagnosis: matched.alternativeDiagnosis || '',
+        alternativeDiagnosis:
+          matched.alternativeDiagnosis || '',
 
         isHealthy: matched.isHealthy,
 
@@ -462,7 +538,9 @@ Return only valid JSON matching the required schema.
 
         affectedParts: matched.affectedParts || '',
 
-        status: matched.isHealthy ? 'Healthy' : 'Infected',
+        status: matched.isHealthy
+          ? 'Healthy'
+          : 'Infected',
 
         treatmentStatus: matched.isHealthy
           ? 'Normal Monitoring'
@@ -478,14 +556,16 @@ Return only valid JSON matching the required schema.
 
         preventiveMeasures: matched.preventiveMeasures,
 
-        date: new Date().toISOString(),
+        // Additional voice/language context.
+        language,
+        farmerQuery,
 
-        // Add authenticated user ID here when auth middleware
-        // is configured on this route.
+        date: new Date(),
+
         userId: req.user?._id || null,
       });
 
-      // Save must succeed before returning success
+      // Save before returning success.
       await record.save();
 
       recordSaved = true;
@@ -512,18 +592,27 @@ Return only valid JSON matching the required schema.
         timestamp: record.createdAt,
 
         imageUrl: record.imageUrl,
+
+        language,
+
+        farmerQuery,
       });
 
     } catch (error) {
-      console.error('Disease detection error:', error);
+      console.error(
+        'Disease detection error:',
+        error
+      );
 
-      // Delete image if diagnosis was not saved
+      // Delete image if diagnosis was not saved.
       if (req.file && !recordSaved) {
         try {
           if (fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
 
-            console.log('Unused uploaded image cleaned up.');
+            console.log(
+              'Unused uploaded image cleaned up.'
+            );
           }
         } catch (cleanupError) {
           console.error(
@@ -533,19 +622,22 @@ Return only valid JSON matching the required schema.
         }
       }
 
-      const status = Number(error.status || error.code);
+      const status = Number(
+        error.status || error.code
+      );
 
-      if ([500, 503, 504].includes(status)) {
+      if ([429, 500, 503, 504].includes(status)) {
         return res.status(503).json({
           success: false,
-          message: 'Gemini is temporarily unavailable. Please try again.',
-          error: error.message,
+          message:
+            'Gemini is temporarily unavailable. Please try again.',
         });
       }
 
       return res.status(500).json({
         success: false,
-        message: 'Unable to analyze or save the plant diagnosis.',
+        message:
+          'Unable to analyze or save the plant diagnosis.',
         error: error.message,
       });
     }
@@ -574,12 +666,14 @@ router.get('/history', async (req, res) => {
     return res.status(200).json(history);
 
   } catch (error) {
-    console.error('Disease history error:', error);
+    console.error(
+      'Disease history error:',
+      error
+    );
 
     return res.status(500).json({
       success: false,
       message: 'Error retrieving disease history.',
-      error: error.message,
     });
   }
 });
@@ -591,14 +685,23 @@ router.get('/history', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    if (!mongoose.connection.readyState) {
+    if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({
         success: false,
         message: 'MongoDB is not connected.',
       });
     }
 
-    const record = await DiseaseRecord.findById(req.params.id).lean();
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid disease record ID.',
+      });
+    }
+
+    const record = await DiseaseRecord.findById(
+      req.params.id
+    ).lean();
 
     if (!record) {
       return res.status(404).json({
@@ -610,12 +713,14 @@ router.get('/:id', async (req, res) => {
     return res.status(200).json(record);
 
   } catch (error) {
-    console.error('Disease record retrieval error:', error);
+    console.error(
+      'Disease record retrieval error:',
+      error
+    );
 
     return res.status(500).json({
       success: false,
       message: 'Unable to retrieve disease record.',
-      error: error.message,
     });
   }
 });
